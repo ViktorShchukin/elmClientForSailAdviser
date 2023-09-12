@@ -9,7 +9,7 @@ import Html exposing (Html, Attribute, div, input, text)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onInput)
 import Http
-import Json.Decode exposing (Decoder, map4, field, int, string)
+import Json.Decode exposing (Decoder, map2, field, string)
 
 
 
@@ -23,18 +23,19 @@ main =
 
 -- MODEL
 
+type alias Product =
+    { name: String
+    , id: String
+    }
 
-type alias Model =
-  { content : String
-    ,strJSON : String
-  }
+type Model = Failure
+  | Loading
+  | Success Product
 
 
 init : () -> (Model, Cmd Msg)
 init _ =
-  ({ content = ""
-    ,strJSON = ""
-  }, Cmd.none)
+  (Loading, Cmd.none)
 
 
 
@@ -43,22 +44,22 @@ init _ =
 
 type Msg
   = Change String 
-  | GotText (Result Http.Error String)
+  | GotProduct (Result Http.Error Product)
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     Change newContent ->
-      ({ model | content = newContent }, doSearch newContent)
+      (Loading, doSearch newContent)
 
-    GotText res ->
+    GotProduct res ->
       case res of
-        Ok str ->
-          ({model | strJSON = str}, Cmd.none)
+        Ok product ->
+          (Success product, Cmd.none)
 
         Err _ ->
-          (model, Cmd.none)
+          (Failure, Cmd.none)
 
 
 
@@ -66,8 +67,14 @@ doSearch: String -> Cmd Msg
 doSearch str =
   Http.get
       { url = "/dictionary/product?product_name=" ++ str
-      , expect = Http.expectString GotText
+      , expect = Http.expectJson GotProduct productDecoder
       }
+
+productDecoder: Decoder Product
+productDecoder =
+    map2 Product
+        (field "product_id" string)
+        (field "name" string)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
@@ -79,7 +86,7 @@ subscriptions _ =
 view : Model -> Html Msg
 view model =
   div []
-    [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []
+    [ input [ placeholder "Text to reverse", onInput Change ] []
     , div [] [ text (String.reverse model.content) ]
     , div [] [text ("result: " ++ model.strJSON)]
     ]
