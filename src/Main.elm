@@ -5,7 +5,7 @@
 --
 module Main exposing (..)
 import Browser
-import Html exposing (Html, Attribute, div, input, text)
+import Html exposing (Attribute, Html, div, input, text)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onInput)
 import Http
@@ -24,18 +24,25 @@ main =
 -- MODEL
 
 type alias Product =
-    { name: String
-    , id: String
+    { id: String
+    , name: String
     }
 
-type Model = Failure
+type  SearchResult = Failure
   | Loading
-  | Success Product
+  | Success (List Product)
+
+type alias Model =
+    { content: String
+    , products: SearchResult
+    }
 
 
 init : () -> (Model, Cmd Msg)
 init _ =
-  (Loading, Cmd.none)
+  ({ content = ""
+    , products = Loading
+    }, Cmd.none)
 
 
 
@@ -44,22 +51,22 @@ init _ =
 
 type Msg
   = Change String 
-  | GotProduct (Result Http.Error Product)
+  | GotProduct (Result Http.Error (List Product))
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     Change newContent ->
-      (Loading, doSearch newContent)
+      ({model | content = newContent}, doSearch newContent)
 
     GotProduct res ->
       case res of
         Ok product ->
-          (Success product, Cmd.none)
+          ({model | products = Success product}, Cmd.none)
 
         Err _ ->
-          (Failure, Cmd.none)
+          ({model | products = Failure}, Cmd.none)
 
 
 
@@ -67,7 +74,7 @@ doSearch: String -> Cmd Msg
 doSearch str =
   Http.get
       { url = "/dictionary/product?product_name=" ++ str
-      , expect = Http.expectJson GotProduct productDecoder
+      , expect = Http.expectJson GotProduct (Json.Decode.list productDecoder)
       }
 
 productDecoder: Decoder Product
@@ -86,7 +93,18 @@ subscriptions _ =
 view : Model -> Html Msg
 view model =
   div []
-    [ input [ placeholder "Text to reverse", onInput Change ] []
+    [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []
     , div [] [ text (String.reverse model.content) ]
-    , div [] [text ("result: " ++ model.strJSON)]
+    , div [] <| drawProductsTable model.products
     ]
+
+drawProductsTable: SearchResult -> List (Html Msg)
+drawProductsTable products =
+    case products of
+        Loading ->
+            [text ("it's loading")]
+        Failure ->
+            [text ("loading has failed")]
+        Success pl ->
+            List.map (\product -> text <|product.id ++ "|" ++ product.name) pl
+
