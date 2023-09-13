@@ -5,8 +5,8 @@
 --
 module Main exposing (..)
 import Browser
-import Html exposing (Attribute, Html, div, input, text)
-import Html.Attributes exposing (..)
+import Html exposing (Attribute, Html, div, input, text, br, table, th, thead, tr,td)
+import Html.Attributes exposing (attribute, placeholder, value)
 import Html.Events exposing (onInput)
 import Http
 import Json.Decode exposing (Decoder, map2, field, string)
@@ -35,6 +35,7 @@ type  SearchResult = Failure
 type alias Model =
     { content: String
     , products: SearchResult
+    , statusMessage: Maybe String
     }
 
 
@@ -42,6 +43,7 @@ init : () -> (Model, Cmd Msg)
 init _ =
   ({ content = ""
    , products = Loading
+   , statusMessage = Nothing
    }, Cmd.none)
 
 
@@ -58,15 +60,27 @@ update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     Change newContent ->
-      ({model | content = newContent}, doSearch newContent)
+        if String.length newContent >= 3 then
+            ({model | content = newContent
+            , statusMessage = Nothing}, doSearch newContent)
+        else
+            ({model | content = newContent
+            , statusMessage = Just "Type more"
+            , products = Loading}, Cmd.none)
 
     GotProduct res ->
       case res of
         Ok listProduct ->
-          ({model | products = Success listProduct}, Cmd.none)
+            if (List.length listProduct) == 0 then
+                ({model | products = Success listProduct
+               , statusMessage = Just "I can't find this product"}, Cmd.none)
+            else
+              ({model | products = Success listProduct
+               , statusMessage = Nothing}, Cmd.none)
 
         Err _ ->
-          ({model | products = Failure}, Cmd.none)
+          ({model | products = Failure
+           , statusMessage = Just "Network error"}, Cmd.none)
 
 
 
@@ -92,11 +106,16 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-  div []
-    [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []
-    , div [] [ text (String.reverse model.content) ]
-    , div [] <| drawProductsTable model.products
-    ]
+  let
+      statusString = case model.statusMessage of
+          Just str -> str
+          Nothing -> ""
+  in
+      div []
+        [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []
+        , div [] <| drawProductsTable model.products
+        , div [] [text statusString]
+        ]
 
 drawProductsTable: SearchResult -> List (Html Msg)
 drawProductsTable products =
@@ -106,4 +125,19 @@ drawProductsTable products =
         Failure ->
             [text ("loading has failed")]
         Success pl ->
-            List.map (\product -> text <|product.id ++ "|" ++ product.name) pl
+             [table [ attribute "role" "grid" ]
+                (List.append
+                [ th [] [text "product id"]
+                , th [] [text "product name"]
+                ]
+                <| List.map productToRow pl)]
+
+productToRow: Product -> Html Msg
+productToRow product =
+    tr []
+        [ td [] [text product.id]
+        , td [] [text product.name]
+        ]
+
+            {-List.map (\product -> text <|product.id ++ "|" ++ product.name) pl
+            |> List.intersperse (br [] [])-}
