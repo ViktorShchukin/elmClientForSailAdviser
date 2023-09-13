@@ -41,8 +41,8 @@ type alias Model =
 init : () -> (Model, Cmd Msg)
 init _ =
   ({ content = ""
-    , products = Loading
-    }, Cmd.none)
+   , products = Loading
+   }, Cmd.none)
 
 
 
@@ -62,8 +62,8 @@ update msg model =
 
     GotProduct res ->
       case res of
-        Ok product ->
-          ({model | products = Success product}, Cmd.none)
+        Ok listProduct ->
+          ({model | products = Success listProduct}, Cmd.none)
 
         Err _ ->
           ({model | products = Failure}, Cmd.none)
@@ -107,4 +107,3 @@ drawProductsTable products =
             [text ("loading has failed")]
         Success pl ->
             List.map (\product -> text <|product.id ++ "|" ++ product.name) pl
-
