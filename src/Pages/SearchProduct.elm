@@ -1,13 +1,13 @@
 module Pages.SearchProduct exposing (Model, Msg, page)
 
-import Html exposing (Attribute, Html, div, input, text, br, table, th, thead, tr,td)
-import Html.Attributes exposing (attribute, placeholder, value)
+import Html exposing (Attribute, Html, div, input, text, br, table, th, thead, tr, td, a)
+import Html.Attributes exposing (attribute, placeholder, value, href)
 import Html.Events exposing (onInput)
 import Page exposing (Page)
 import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map2, field, string)
-
+import Route
 
 import Components.Sidebar
 
@@ -144,14 +144,14 @@ drawProductsTable products =
         Success pl ->
              [table [ attribute "role" "grid" ]
                 (List.append
-                [ th [] [text "product id"]
-                , th [] [text "product name"]
+                [ th [] [text "product name"]
+                , th [] [text "Product card"]
                 ]
                 <| List.map productToRow pl)]
 
 productToRow: Product -> Html Msg
 productToRow product =
     tr []
-        [ td [] [text product.id]
-        , td [] [text product.name]
+        [ td [] [text product.name]
+        , td [] [ a [href <| "/product-card/" ++ product.id] [ text "product card"] ]
         ]

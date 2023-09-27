@@ -15,7 +15,8 @@ view props =
     , body =
         [ div [ class "layout" ]
             [ aside [ class "sidebar" ]
-                [ a [ href "/" ] [ text "Home " ]
+                [ a [ href "/" ] [ text "Home" ]
+                , text " | "
                 , a [ href "/search-product"] [ text "search product"]
                 ]
             , div [ class "page" ] props.body
