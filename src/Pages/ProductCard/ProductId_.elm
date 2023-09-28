@@ -7,7 +7,7 @@ import Page exposing (Page)
 import Shared
 import View exposing (View)
 import Http
-import Json.Decode exposing (Decoder, map5, field, string, int, float)
+import Json.Decode exposing (Decoder, map, map5, field, string, int, float)
 
 import Components.Sidebar
 
@@ -36,8 +36,10 @@ type  SearchResult = Failure
   | Loading
   | Success (List Sale)
 
-type PredictionResult = Failure
-    | Success
+type alias Prediction = Maybe Int
+
+type PredictionResult = FailurePrediction
+    | SuccessPrediction Prediction
     | Nothing
 
 type alias Model =
@@ -74,8 +76,8 @@ saleDecoder =
 
 type Msg
     = GotSales (Result Http.Error (List Sale))
-    | DoPrediction
-    | GotPrediction
+    | Predict
+    | GotPrediction (Result Http.Error Prediction)
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -89,16 +91,32 @@ update msg model =
                 Err _ ->
                     ({model | sales = Failure}
                     , Effect.none)
-        DoPrediction ->
-            (model
-            , Effect.none
-            )
-        GotPrediction ->
+        Predict ->
             ( model
-            , Effect.none
+            , Effect.sendCmd doPrediction
             )
+        GotPrediction res ->
+            case res of
+                Ok pred ->
+                    ( {model | prediction = SuccessPrediction pred}
+                    , Effect.none
+                    )
+                Err _ ->
+                    ( {model | prediction = FailurePrediction}
+                    , Effect.none
+                    )
 
 
+doPrediction: Cmd Msg
+doPrediction =
+    Http.get
+        { url = ""
+        , expect = Http.expectJson GotPrediction  predictionDecoder}
+
+predictionDecoder: Decoder Prediction
+predictionDecoder =
+    map Prediction
+        (field "result" int)
 
 -- SUBSCRIPTIONS
 
