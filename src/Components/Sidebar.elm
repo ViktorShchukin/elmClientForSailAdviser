@@ -14,12 +14,19 @@ view props =
     { title = props.title
     , body =
         [ div [ class "layout" ]
-            [ aside [ class "sidebar" ]
-                [ a [ href "/" ] [ text "Home" ]
-                , text " | "
-                , a [ href "/search-product"] [ text "search product"]
+            [ nav []
+                [ ul [] [ li [] [text "Sale Adviser"]]
+                , ul [] [ li [] [ a [ href "/" ] [ text "Home" ]]
+                        , li [] [a [ href "/search-product"] [ text "search product"]]
+                        ]
                 ]
             , div [ class "page" ] props.body
             ]
         ]
     }
+
+
+--custom tag which used in pico.css for sidebar
+nav: List (Attribute msg) -> List (Html msg) -> Html msg
+nav =
+    node "nav"

@@ -117,7 +117,7 @@ view model =
                 Nothing -> ""
     in
         Components.Sidebar.view
-            { title = "Pages.SearchProduct"
+            { title = "SearchProduct"
             , body = [
                         div []
                         [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []

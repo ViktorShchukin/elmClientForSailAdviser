@@ -3,6 +3,7 @@ module Pages.ProductCard.ProductId_ exposing (Model, Msg, page)
 import Effect exposing (Effect)
 import Route exposing (Route)
 import Html
+import Html.Attributes exposing (attribute)
 import Page exposing (Page)
 import Shared
 import View exposing (View)
@@ -14,7 +15,7 @@ import Components.Sidebar
 page : Shared.Model -> Route { productId : String } -> Page Model Msg
 page shared route =
     Page.new
-        { init = init
+        { init = init route
         , update = update
         , subscriptions = subscriptions
         , view = view
@@ -32,13 +33,15 @@ type alias Sale =
     , date: String
     }
 
-type  SearchResult = Failure
-  | Loading
-  | Success (List Sale)
+type  SearchResult
+    = Failure
+    | Loading
+    | Success (List Sale)
 
-type alias Prediction = Maybe Int
+type alias Prediction = Int
 
-type PredictionResult = FailurePrediction
+type PredictionResult
+    = FailurePrediction
     | SuccessPrediction Prediction
     | Nothing
 
@@ -48,14 +51,14 @@ type alias Model =
     }
 
 
-init : () -> ( Model, Effect Msg )
-init () =
+init : Route { productId : String }  -> () -> ( Model, Effect Msg )
+init route () =
     ( { sales = Loading
       , prediction = Nothing
       }
     , Effect.sendCmd <|
          Http.get
-            { url = "https://elm-lang.org/assets/public-opinion.txt"
+            { url = "/dictionary/product/" ++ route.params.productId ++ "/sale"
             , expect = Http.expectJson GotSales <| Json.Decode.list saleDecoder
             }
     )
@@ -115,8 +118,7 @@ doPrediction =
 
 predictionDecoder: Decoder Prediction
 predictionDecoder =
-    map Prediction
-        (field "result" int)
+        field "result" int
 
 -- SUBSCRIPTIONS
 
@@ -133,6 +135,74 @@ subscriptions model =
 view : Model -> View Msg
 view model =
     Components.Sidebar.view
-        { title = "Pages.ProductCard.ProductId_"
-        , body = [ Html.text "/product-card/:product-id" ]
+        { title = "ProductCard"
+        , body = [ drawPageBody model ]
         }
+
+drawPageBody: Model -> Html.Html Msg
+drawPageBody model =
+    Html.div [] [ Html.div [] [ drawSalesTable model.sales]
+                , Html.div [] [ drawPrediction model.prediction]
+                ]
+
+
+drawSalesTable: SearchResult -> Html.Html Msg
+drawSalesTable res =
+    case res of
+        Loading -> Html.text "it's loading, please waite"
+        Failure -> Html.text "Something went wrong. I can't get sales of this product"
+        Success listSales ->
+            Html.table [] <| List.append
+                             [ Html.th [] [Html.text "date"]
+                             , Html.th [] [Html.text "value"]
+                             ]
+                             <| List.map saleToRow listSales
+
+
+
+saleToRow: Sale -> Html.Html Msg
+saleToRow sale =
+    Html.tr []
+            [ Html.td [] [Html.text sale.date]
+            , Html.td [] [Html.text <| String.fromFloat sale.totalValue]
+            ]
+
+
+drawPrediction: PredictionResult -> Html.Html Msg
+drawPrediction res =
+    Html.table [] [ Html.th [] [Html.text "Prediction rate"]
+                  , Html.th [] [Html.text "Prediction result"]
+                  , drawPredictionRow res
+                  ]
+
+
+drawPredictionRow: PredictionResult -> Html.Html Msg
+drawPredictionRow res =
+     Html.tr []
+            [ Html.td [] [ drawPredictionSelect ]
+            , Html.td [] [ drawPredictionResult res ]
+            ]
+
+
+drawPredictionSelect: Html.Html Msg
+drawPredictionSelect =
+    Html.select [] [ Html.option [][ Html.text "select"]
+                   , Html.option [][ Html.text "Next week"]
+                   , Html.option [][ Html.text "Next month"]
+                   ]
+
+drawPredictionResult: PredictionResult -> Html.Html Msg
+drawPredictionResult res =
+    case res of
+        Nothing -> Html.text "select prediction rate"
+        FailurePrediction -> Html.text "something went wrong, I can't get a prediction result"
+        SuccessPrediction prediction -> Html.text <| String.fromInt prediction
+
+
+
+{-
+    case res of
+        Nothing -> Html.text "click to do prediction"
+        FailurePrediction ->
+        SuccessPrediction Prediction
+-}
