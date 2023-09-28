@@ -8,7 +8,7 @@ import Page exposing (Page)
 import Shared
 import View exposing (View)
 import Http
-import Json.Decode exposing (Decoder, map, map5, field, string, int, float)
+import Json.Decode exposing (Decoder, map2, map5, field, string, int, float)
 
 import Components.Sidebar
 
@@ -38,13 +38,17 @@ type  SearchResult
     | Loading
     | Success (List Sale)
 
-type alias Prediction = Int
+type alias Prediction =
+    { range: String
+    , value: Int
+    }
 
 type PredictionResult
     = FailurePrediction
     | SuccessPrediction Prediction
     | Nothing
 
+--todo how to hold list of predictions
 type alias Model =
     { sales: SearchResult
     , prediction: PredictionResult
@@ -109,7 +113,7 @@ update msg model =
                     , Effect.none
                     )
 
-
+--todo set up the prediction interface on back
 doPrediction: Cmd Msg
 doPrediction =
     Http.get
@@ -118,7 +122,9 @@ doPrediction =
 
 predictionDecoder: Decoder Prediction
 predictionDecoder =
-        field "result" int
+    map2 Prediction
+        (field "range" string)
+        (field "value" int)
 
 -- SUBSCRIPTIONS
 
@@ -145,7 +151,7 @@ drawPageBody model =
                 , Html.div [] [ drawPrediction model.prediction]
                 ]
 
-
+--todo why sales dont draw on the page?
 drawSalesTable: SearchResult -> Html.Html Msg
 drawSalesTable res =
     case res of
@@ -167,7 +173,7 @@ saleToRow sale =
             , Html.td [] [Html.text <| String.fromFloat sale.totalValue]
             ]
 
-
+--todo refactor from table to div construction
 drawPrediction: PredictionResult -> Html.Html Msg
 drawPrediction res =
     Html.table [] [ Html.th [] [Html.text "Prediction rate"]
@@ -196,7 +202,7 @@ drawPredictionResult res =
     case res of
         Nothing -> Html.text "select prediction rate"
         FailurePrediction -> Html.text "something went wrong, I can't get a prediction result"
-        SuccessPrediction prediction -> Html.text <| String.fromInt prediction
+        SuccessPrediction prediction -> Html.text ""
 
 
 
