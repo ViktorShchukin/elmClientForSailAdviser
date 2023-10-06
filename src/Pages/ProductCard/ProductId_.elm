@@ -3,7 +3,7 @@ module Pages.ProductCard.ProductId_ exposing (Model, Msg, page)
 import Effect exposing (Effect)
 import Route exposing (Route)
 import Html
-import Html.Attributes exposing (attribute)
+import Html.Attributes exposing (attribute, class)
 import Page exposing (Page)
 import Shared
 import View exposing (View)
@@ -45,10 +45,10 @@ type alias Prediction =
 
 type PredictionResult
     = FailurePrediction
-    | SuccessPrediction Prediction
+    | SuccessPrediction (List Prediction)
     | Nothing
 
---todo how to hold list of predictions
+
 type alias Model =
     { sales: SearchResult
     , prediction: PredictionResult
@@ -60,11 +60,15 @@ init route () =
     ( { sales = Loading
       , prediction = Nothing
       }
-    , Effect.sendCmd <|
-         Http.get
+    , Effect.batch
+         [ Effect.sendCmd <| Http.get
             { url = "/dictionary/product/" ++ route.params.productId ++ "/sale"
             , expect = Http.expectJson GotSales <| Json.Decode.list saleDecoder
             }
+         , Effect.sendCmd <| doPrediction route "7"
+         , Effect.sendCmd <| doPrediction route "30"
+         ]
+
     )
 
 saleDecoder: Decoder Sale
@@ -83,8 +87,8 @@ saleDecoder =
 
 type Msg
     = GotSales (Result Http.Error (List Sale))
-    | Predict
-    | GotPrediction (Result Http.Error Prediction)
+    --| Predict
+    | GotPrediction (Result Http.Error (List Prediction))
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -98,27 +102,41 @@ update msg model =
                 Err _ ->
                     ({model | sales = Failure}
                     , Effect.none)
-        Predict ->
+        {-Predict ->
             ( model
             , Effect.sendCmd doPrediction
-            )
+            )-}
         GotPrediction res ->
             case res of
                 Ok pred ->
-                    ( {model | prediction = SuccessPrediction pred}
-                    , Effect.none
-                    )
+                    case model.prediction of
+                        Nothing ->
+                            ( {model | prediction = SuccessPrediction pred}
+                            , Effect.none
+                            )
+
+                        FailurePrediction ->
+                            (model
+                            , Effect.none)
+
+
+                        SuccessPrediction predictions ->
+                            ({model | prediction = SuccessPrediction <| List.append predictions pred}
+                            , Effect.none
+                            )
+
+
                 Err _ ->
                     ( {model | prediction = FailurePrediction}
                     , Effect.none
                     )
 
---todo set up the prediction interface on back
-doPrediction: Cmd Msg
-doPrediction =
+
+doPrediction: Route { productId : String } -> String -> Cmd Msg
+doPrediction route range =
     Http.get
-        { url = ""
-        , expect = Http.expectJson GotPrediction  predictionDecoder}
+        { url = "/dictionary/product/" ++ route.params.productId ++ "/prediction/" ++ range
+        , expect = Http.expectJson GotPrediction <| Json.Decode.list predictionDecoder}
 
 predictionDecoder: Decoder Prediction
 predictionDecoder =
@@ -147,11 +165,11 @@ view model =
 
 drawPageBody: Model -> Html.Html Msg
 drawPageBody model =
-    Html.div [] [ Html.div [] [ drawSalesTable model.sales]
+    Html.div [class "grid"] [ Html.div [] [ drawSalesTable model.sales]
                 , Html.div [] [ drawPrediction model.prediction]
                 ]
 
---todo why sales dont draw on the page?
+
 drawSalesTable: SearchResult -> Html.Html Msg
 drawSalesTable res =
     case res of
@@ -160,7 +178,7 @@ drawSalesTable res =
         Success listSales ->
             Html.table [] <| List.append
                              [ Html.th [] [Html.text "date"]
-                             , Html.th [] [Html.text "value"]
+                             , Html.th [] [Html.text "quantity"]
                              ]
                              <| List.map saleToRow listSales
 
@@ -170,7 +188,7 @@ saleToRow: Sale -> Html.Html Msg
 saleToRow sale =
     Html.tr []
             [ Html.td [] [Html.text sale.date]
-            , Html.td [] [Html.text <| String.fromFloat sale.totalValue]
+            , Html.td [] [Html.text <| String.fromInt sale.quantity]
             ]
 
 --todo refactor from table to div construction
