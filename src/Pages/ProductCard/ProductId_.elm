@@ -39,13 +39,13 @@ type  SearchResult
     | Success (List Sale)
 
 type alias Prediction =
-    { range: String
+    { range: Int
     , value: Int
     }
 
 type PredictionResult
-    = FailurePrediction
-    | SuccessPrediction (List Prediction)
+    = FailurePrediction Http.Error
+    | SuccessPrediction Prediction
     | Nothing
 
 
@@ -65,7 +65,6 @@ init route () =
             { url = "/dictionary/product/" ++ route.params.productId ++ "/sale"
             , expect = Http.expectJson GotSales <| Json.Decode.list saleDecoder
             }
-         , Effect.sendCmd <| doPrediction route "7"
          , Effect.sendCmd <| doPrediction route "30"
          ]
 
@@ -88,7 +87,7 @@ saleDecoder =
 type Msg
     = GotSales (Result Http.Error (List Sale))
     --| Predict
-    | GotPrediction (Result Http.Error (List Prediction))
+    | GotPrediction (Result Http.Error Prediction)
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -109,25 +108,12 @@ update msg model =
         GotPrediction res ->
             case res of
                 Ok pred ->
-                    case model.prediction of
-                        Nothing ->
-                            ( {model | prediction = SuccessPrediction pred}
-                            , Effect.none
-                            )
-
-                        FailurePrediction ->
-                            (model
-                            , Effect.none)
+                    ( {model | prediction = SuccessPrediction pred}
+                    , Effect.none)
 
 
-                        SuccessPrediction predictions ->
-                            ({model | prediction = SuccessPrediction <| List.append predictions pred}
-                            , Effect.none
-                            )
-
-
-                Err _ ->
-                    ( {model | prediction = FailurePrediction}
+                Err error ->
+                    ( {model | prediction = FailurePrediction error}
                     , Effect.none
                     )
 
@@ -136,12 +122,12 @@ doPrediction: Route { productId : String } -> String -> Cmd Msg
 doPrediction route range =
     Http.get
         { url = "/dictionary/product/" ++ route.params.productId ++ "/prediction/" ++ range
-        , expect = Http.expectJson GotPrediction <| Json.Decode.list predictionDecoder}
+        , expect = Http.expectJson GotPrediction  predictionDecoder}
 
 predictionDecoder: Decoder Prediction
 predictionDecoder =
     map2 Prediction
-        (field "range" string)
+        (field "range" int)
         (field "value" int)
 
 -- SUBSCRIPTIONS
@@ -202,31 +188,19 @@ drawPrediction res =
 
 drawPredictionRow: PredictionResult -> Html.Html Msg
 drawPredictionRow res =
-     Html.tr []
-            [ Html.td [] [ drawPredictionSelect ]
-            , Html.td [] [ drawPredictionResult res ]
-            ]
-
-
-drawPredictionSelect: Html.Html Msg
-drawPredictionSelect =
-    Html.select [] [ Html.option [][ Html.text "select"]
-                   , Html.option [][ Html.text "Next week"]
-                   , Html.option [][ Html.text "Next month"]
-                   ]
-
-drawPredictionResult: PredictionResult -> Html.Html Msg
-drawPredictionResult res =
     case res of
         Nothing -> Html.text "select prediction rate"
-        FailurePrediction -> Html.text "something went wrong, I can't get a prediction result"
-        SuccessPrediction prediction -> Html.text ""
+        FailurePrediction error ->
+            case error of
+                Http.BadUrl _ -> Html.text ("BadUrl")
+                Http.Timeout -> Html.text ("Timeout")
+                Http.NetworkError -> Html.text ("NetWorkError")
+                Http.BadStatus code -> Html.text ("Bad status " ++ String.fromInt code)
+                Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
+        SuccessPrediction prediction ->
+             Html.tr []
+                    [ Html.td [] [ Html.text <| String.fromInt prediction.range ]
+                    , Html.td [] [ Html.text <| String.fromInt prediction.value ]
+                    ]
 
 
-
-{-
-    case res of
-        Nothing -> Html.text "click to do prediction"
-        FailurePrediction ->
-        SuccessPrediction Prediction
--}
