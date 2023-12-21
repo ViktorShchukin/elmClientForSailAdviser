@@ -73,10 +73,10 @@ init route () =
 saleDecoder: Decoder Sale
 saleDecoder =
     map5 Sale
-        (field "sale_id" string)
+        (field "id" string)
         (field "product_id" string)
         (field "quantity" int)
-        (field "total_value" float)
+        (field "total_sum" float)
         (field "date" string)
 
 

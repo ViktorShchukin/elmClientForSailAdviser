@@ -39,7 +39,7 @@ type alias Model =
     , statusMessage: Maybe String
     }
 
-init : ( Model, Cmd Msg )
+init : (Model, Cmd Msg)
 init =
     ({ content = ""
      , products = Loading
@@ -92,7 +92,7 @@ doSearch str =
 productDecoder: Decoder Product
 productDecoder =
     map2 Product
-        (field "product_id" string)
+        (field "id" string)
         (field "name" string)
 
 
