@@ -30,13 +30,19 @@ page =
 
 --INIT
 
+type UploadResult
+    = Failure Http.Error
+    | Success
 
-type alias Model = List File
+type alias Model =
+    { chosenFile: List File
+    , uploadStatus: Maybe UploadResult}
 
 
 init : (Model, Cmd Msg)
 init =
-    ([], Cmd.none)
+    ({ chosenFile = []
+     , uploadStatus = Nothing}, Cmd.none)
 
 
 --UPDATE
@@ -50,14 +56,17 @@ type  Msg
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
+        GotFiles files ->
+            ({model | chosenFile = files}, uploadFiles files ReciveUploadRespose)
+
         ReciveUploadRespose result ->
             case result of
                 Ok _ ->
-                    (model, Cmd.none)
-                Err _ ->
-                    (model, Cmd.none)
-        GotFiles files ->
-            (files, uploadFiles files ReciveUploadRespose)
+                    ({model | uploadStatus = Just Success}, Cmd.none)
+                Err error ->
+                    ({model | uploadStatus = Just <| Failure error}, Cmd.none)
+
+
 
 
 uploadFiles: (List File) -> (Result Http.Error () -> Msg) -> Cmd Msg
@@ -69,12 +78,12 @@ uploadFiles files msg =
 uploadFile: (Result Http.Error () -> Msg) -> File -> Cmd Msg
 uploadFile msg file =
     let
-        url = "" --todo end this
+        url = "/dictionary/sale/file/upload" --todo end this
     in
     Http.request
-        { method = "Post"
+        { method = "POST"
         , url = url
-        , body = Http.fileBody file --todo read about and end this
+        , body = Http.multipartBody [Http.filePart "file" file]  --todo read about and end this
         , expect = Http.expectWhatever msg
         , headers = []
         , timeout = Nothing
@@ -102,6 +111,7 @@ view model =
                             div []
                             [ Html.text "Hello, world!"
                             , input [type_ "file", on "change" (D.map GotFiles filesDecoder)] [Html.text "uploadFile"]
+                            , Html.text <| uploadErrorHandler model
                             ]
 
                          ]
@@ -110,3 +120,16 @@ view model =
 filesDecoder : D.Decoder (List File)
 filesDecoder =
   D.at ["target","files"] (D.list File.decoder)
+
+uploadErrorHandler: Model -> String
+uploadErrorHandler model =
+    case model.uploadStatus of
+        Nothing -> ""
+        Just Success -> "success upload"
+        Just (Failure error) ->
+            case error of
+                Http.BadUrl string -> "file upload request error: " ++ string
+                Http.Timeout -> "file upload request error: Timeout"
+                Http.NetworkError -> "file upload request error: NetworkError"
+                Http.BadStatus int -> "file upload request error BadStatus: " ++ String.fromInt int
+                Http.BadBody string -> "file upload request error:" ++ string
