@@ -39,8 +39,8 @@ type  SearchResult
     | Success (List Sale)
 
 type alias Prediction =
-    { range: Int
-    , value: Int
+    { range: String
+    , value: Float
     }
 
 type PredictionResult
@@ -65,7 +65,7 @@ init route () =
             { url = "/dictionary/product/" ++ route.params.productId ++ "/sale"
             , expect = Http.expectJson GotSales <| Json.Decode.list saleDecoder
             }
-         , Effect.sendCmd <| doPrediction route "30"
+         , Effect.sendCmd <| doPrediction route "2023-12-27T15:56:04"
          ]
 
     )
@@ -74,10 +74,10 @@ saleDecoder: Decoder Sale
 saleDecoder =
     map5 Sale
         (field "id" string)
-        (field "product_id" string)
+        (field "product-id" string)
         (field "quantity" int)
-        (field "total_sum" float)
-        (field "date" string)
+        (field "total-sum" float)
+        (field "sale-date" string)
 
 
 
@@ -127,8 +127,8 @@ doPrediction route range =
 predictionDecoder: Decoder Prediction
 predictionDecoder =
     map2 Prediction
-        (field "range" int)
-        (field "value" int)
+        (field "range" string)
+        (field "value" float)
 
 -- SUBSCRIPTIONS
 
@@ -199,8 +199,8 @@ drawPredictionRow res =
                 Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
         SuccessPrediction prediction ->
              Html.tr []
-                    [ Html.td [] [ Html.text <| String.fromInt prediction.range ]
-                    , Html.td [] [ Html.text <| String.fromInt prediction.value ]
+                    [ Html.td [] [ Html.text prediction.range ]
+                    , Html.td [] [ Html.text <| String.fromFloat prediction.value ]
                     ]
 
 
