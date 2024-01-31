@@ -18,6 +18,7 @@ view props =
                 [ ul [] [ li [] [text "Sale Adviser"]]
                 , ul [] [ li [] [ a [ href "/" ] [ text "Home" ]]
                         , li [] [a [ href "/search-product"] [ text "search product"]]
+                        , li [] [a [href "/group"] [ text "product group"]]
                         ]
                 ]
             , div [ class "page" ] props.body

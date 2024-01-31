@@ -151,7 +151,8 @@ view model =
 
 drawPageBody: Model -> Html.Html Msg
 drawPageBody model =
-    Html.div [class "grid"] [ Html.div [] [ drawSalesTable model.sales]
+    Html.div [class "grid"]
+                [ Html.div [] [ drawSalesTable model.sales]
                 , Html.div [] [ drawPrediction model.prediction]
                 ]
 
