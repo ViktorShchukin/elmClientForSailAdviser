@@ -120,7 +120,7 @@ view model =
             { title = "SearchProduct"
             , body = [
                         div []
-                        [ input [ placeholder "Text to reverse", value model.content, onInput Change ] []
+                        [ input [ placeholder "type product name for", value model.content, onInput Change ] []
                         , div [] <| drawProductsTable model.products
                         , div [] [text statusString]
                         ]
