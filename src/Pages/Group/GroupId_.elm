@@ -33,6 +33,18 @@ type alias Product =
     , name: String
     }
 
+type alias Prediction =
+    { range: String
+    , value: Float
+    , productId: String
+    }
+
+type alias GroupRow =
+    { product: Product
+    , prediction: Maybe Prediction
+    , customValue: Maybe Float
+    }
+
 
 type  RequestResultForProducts
   = Failure Http.Error
@@ -40,19 +52,25 @@ type  RequestResultForProducts
   | Success (List Product)
 
 
-
-
 type alias Model =
-    { productsInSearch: RequestResultForProducts
-    , productsInGroup: RequestResultForProducts
+    { productsInSearch: List Product
+    , productsInGroup: List GroupRow
     , content: String
+    , range: String
     }
+
+productToGroupRow: Product -> GroupRow
+productToGroupRow product =
+    GroupRow product Nothing Nothing
+
+
 
 init : Route { groupId : String } -> () -> ( Model, Effect Msg )
 init route () =
-    ( { productsInSearch = Loading
-      , productsInGroup = Loading
-      , content = ""}
+    ( { productsInSearch = []
+      , productsInGroup = []
+      , content = ""
+      , range = "2023-12-27T15:56:04"} --todo create normal input for prediction and add date time module
     , Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId
     )
 
@@ -72,6 +90,19 @@ productDecoder =
         (field "name" string)
 
 
+doPrediction: String  -> Product -> Cmd Msg
+doPrediction range product =
+    Http.get
+        { url = "/dictionary/product/" ++ product.id ++ "/prediction/" ++ range
+        , expect = Http.expectJson GotPrediction  predictionDecoder}
+
+
+predictionDecoder: Decoder Prediction
+predictionDecoder =
+    map3 Prediction
+        (field "range" string)
+        (field "value" float)
+        (field "product-id" string)
 
 -- UPDATE
 
@@ -81,7 +112,12 @@ type Msg
     | GotProductsForSearch (Result Http.Error (List Product))
     | Change String
     | AddProductToGroup String
+    | DeleteProductFromGroup String
     | GotResponseAddProduct (Result Http.Error ())
+    | GotResponseDeleteProduct (Result Http.Error ())
+    | GotPrediction (Result Http.Error Prediction)
+    | ChangeCustomValue String
+    | ChangePredictionRange String
 
 
 update : Route { groupId : String } -> Msg -> Model -> ( Model, Effect Msg )
@@ -90,18 +126,18 @@ update route msg model =
         GotProductsForGroup res ->
             case res of
                 Ok listProduct ->
-                      ({ model | productsInGroup = Success listProduct}
-                      , Effect.none)
+                      ({ model | productsInGroup = List.map productToGroupRow listProduct}
+                      , Effect.batch <| List.map Effect.sendCmd <| List.map (doPrediction model.range) listProduct )
                 Err err ->
-                      ({ model | productsInGroup = Failure err}
+                      (model
                       , Effect.none)
         GotProductsForSearch res ->
             case res of
                 Ok listProduct ->
-                      ({ model | productsInSearch = Success listProduct}
+                      ({ model | productsInSearch = listProduct}
                       , Effect.none)
                 Err err ->
-                      ({ model | productsInSearch = Failure err}
+                      (model
                       , Effect.none)
         Change newContent ->
             if String.length newContent >= 3 then
@@ -110,8 +146,22 @@ update route msg model =
                 ({model | content = newContent}, Effect.none)
         AddProductToGroup productId ->
             (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
+        DeleteProductFromGroup productId -> (model, Effect.sendCmd <| requestToDeleteProductFromGroup route.params.groupId productId)
+        GotResponseDeleteProduct res -> (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
         GotResponseAddProduct res ->
             (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
+        GotPrediction res ->
+            case res of
+                Ok pred -> ( setPrediction model pred, Effect.none)
+                Err err -> (model, Effect.none)
+        ChangeCustomValue str -> (model, Effect.none)
+        ChangePredictionRange newRange -> ({ model | range = newRange}
+                                          , Effect.batch <| List.map Effect.sendCmd <| List.map (doPrediction newRange) <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
+
+
+getProductFromGroupRow: GroupRow -> Product
+getProductFromGroupRow groupRow =
+    groupRow.product
 
 
 requestToAddProductToGroup: String -> String -> Cmd Msg
@@ -122,12 +172,44 @@ requestToAddProductToGroup groupId productId =
               }
 
 
+requestToDeleteProductFromGroup: String -> String -> Cmd Msg
+requestToDeleteProductFromGroup groupId productId =
+    Http.request { method = "DELETE"
+                 , headers = []
+                 , url = "/dictionary/group/" ++ groupId ++ "/product/" ++ productId
+                 , body = Http.emptyBody
+                 , expect = Http.expectWhatever GotResponseDeleteProduct
+                 , timeout = Nothing
+                 , tracker = Nothing
+                 }
+
 doSearch: String -> Cmd Msg
 doSearch str =
     Http.get
               { url = "/dictionary/product?product_name=" ++ str
               , expect = Http.expectJson GotProductsForSearch (Json.Decode.list productDecoder)
               }
+
+
+setPrediction: Model -> Prediction -> Model
+setPrediction model pred =
+    let
+        updatePrediction: GroupRow -> GroupRow
+        updatePrediction group =
+            if group.product.id == pred.productId then
+                {group | prediction = Just pred}
+            else
+                group
+
+        updateProductsInGroup: List GroupRow -> List GroupRow
+        updateProductsInGroup groups =
+            List.map updatePrediction groups
+
+    in
+        { model | productsInGroup = updateProductsInGroup model.productsInGroup }
+
+
+
 
 
 -- SUBSCRIPTIONS
@@ -151,7 +233,8 @@ view model =
 
 drawPageBody: Model -> Html.Html Msg
 drawPageBody model =
-    Html.div [ Html.Attributes.class "grid"] [ Html.div [] [ drawProductInGroup model ]
+    Html.div [ Html.Attributes.class "grid"] [ Html.div [] [ Html.div [] [  Html.input [ Html.Attributes.placeholder "type prediction date", Html.Attributes.value model.range, Html.Events.onInput ChangePredictionRange] [] ]
+                                                           , drawProductInGroup model ]
                                              , Html.div [] [ Html.input [ Html.Attributes.placeholder "type product name", Html.Attributes.value model.content, Html.Events.onInput Change] []
                                                            , drawSearchAndAddProduct model] ]
 
@@ -162,47 +245,47 @@ drawPageBody model =
 
 drawProductInGroup: Model -> Html.Html Msg
 drawProductInGroup model =
-    case model.productsInGroup of
-        Loading -> Html.text "it's loading, please wait"
-        Failure err ->
-            case err of
-                Http.BadUrl _ -> Html.text ("BadUrl")
-                Http.Timeout -> Html.text ("Timeout")
-                Http.NetworkError -> Html.text ("NetWorkError")
-                Http.BadStatus code -> Html.text ("Bad status " ++ String.fromInt code)
-                Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
-        Success listProducts -> Html.table [] <| List.append [ Html.th [] [Html.text "name"]
-                                                             , Html.th [] [Html.text "id"]
-                                                             ] <| List.map productToRow listProducts
+     Html.table [] <| List.append [ Html.th [] [Html.text "name"]
+                                  , Html.th [] [Html.text "prediction"]
+                                  , Html.th [] [Html.text "custom value"]
+                                  ] <| List.map productToRow model.productsInGroup
 
 
 
-productToRow: Product -> Html.Html Msg
-productToRow product =
+productToRow: GroupRow -> Html.Html Msg
+productToRow groupRow =
     Html.tr []
-        [ Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ product.id] [ Html.text product.name] ]
-        ]
+        [ Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ groupRow.product.id] [ Html.text groupRow.product.name] ]
+        , Html.td [] [Html.text <| predictionToText groupRow.prediction]
+        , Html.td [] [ Html.input [ Html.Attributes.value <| customValueToText groupRow.customValue, Html.Events.onInput ChangeCustomValue ] [] ]--Html.text <| customValueToText groupRow.customValue]
+        , Html.td [] [ Html.button [ Html.Events.onClick <| DeleteProductFromGroup groupRow.product.id ] [ Html.text "delete from group"] ]
+        ] --todo add delete product from group
+
+
+predictionToText: Maybe Prediction -> String
+predictionToText prediction =
+    case prediction of
+        Nothing -> "-"
+        Just pred -> String.fromFloat pred.value
+
+
+customValueToText: Maybe Float -> String
+customValueToText value =
+    case value of
+        Nothing -> "-"
+        Just float -> String.fromFloat float
 
 
 drawSearchAndAddProduct: Model -> Html.Html Msg
 drawSearchAndAddProduct model =
-    case model.productsInSearch of
-        Loading -> Html.text "it's loading, please wait"
-        Failure err ->
-            case err of
-                Http.BadUrl _ -> Html.text ("BadUrl")
-                Http.Timeout -> Html.text ("Timeout")
-                Http.NetworkError -> Html.text ("NetWorkError")
-                Http.BadStatus code -> Html.text ("Bad status " ++ String.fromInt code)
-                Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
-        Success listProducts -> Html.table [] <| List.append [ Html.th [] [Html.text "name"]
-                                                             , Html.th [] [Html.text "id"]
-                                                             ] <| List.map productToRowForSearch listProducts
+    Html.table [ Html.Attributes.style "background" "lightblue" ] <| List.append [ Html.th [] [Html.text "name"]
+                                 , Html.th [] [Html.text "id"]
+                                 ] <| List.map productToRowForSearch model.productsInSearch
 
 
 productToRowForSearch: Product -> Html.Html Msg
 productToRowForSearch product =
     Html.tr []
-        [ Html.td [] [Html.button [ Html.Events.onClick <| AddProductToGroup product.id ] [ Html.text "add to group"] ]
+        [ Html.td [] [ Html.button [ Html.Events.onClick <| AddProductToGroup product.id ] [ Html.text "add to group"] ]
         , Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ product.id] [ Html.text product.name] ]
         ]
