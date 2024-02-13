@@ -60,7 +60,7 @@ groupDecoder =
     map3 Group
         (field "id" string)
         (field "name" string)
-        (field "creation_date" string)
+        (field "creation-date" string)
 
 
 -- UPDATE

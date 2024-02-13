@@ -9,7 +9,7 @@ import Page exposing (Page)
 import Shared
 import View exposing (View)
 import Http
-import Json.Decode exposing (Decoder, map2, map3, field, string, float, maybe)
+import Json.Decode exposing (Decoder, map2, map3, field, string, float, int)
 
 import Components.Sidebar
 
@@ -39,17 +39,16 @@ type alias Prediction =
     , productId: String
     }
 
+type alias CustomValue =
+    { value: Int
+    , productId: String
+    }
+
 type alias GroupRow =
     { product: Product
     , prediction: Maybe Prediction
-    , customValue: Maybe Float
+    , customValue: Maybe CustomValue
     }
-
-
-type  RequestResultForProducts
-  = Failure Http.Error
-  | Loading
-  | Success (List Product)
 
 
 type alias Model =
@@ -57,6 +56,7 @@ type alias Model =
     , productsInGroup: List GroupRow
     , content: String
     , range: String
+    , debug: List String
     }
 
 productToGroupRow: Product -> GroupRow
@@ -70,7 +70,9 @@ init route () =
     ( { productsInSearch = []
       , productsInGroup = []
       , content = ""
-      , range = "2023-12-27T15:56:04"} --todo create normal input for prediction and add date time module
+      , range = "2023-12-27T15:56:04" --todo create normal input for prediction and add date time module
+      , debug = []
+      }
     , Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId
     )
 
@@ -116,8 +118,9 @@ type Msg
     | GotResponseAddProduct (Result Http.Error ())
     | GotResponseDeleteProduct (Result Http.Error ())
     | GotPrediction (Result Http.Error Prediction)
-    | ChangeCustomValue String
+    | ChangeCustomValue Product String
     | ChangePredictionRange String
+    | GotCustomValue (Result Http.Error CustomValue)
 
 
 update : Route { groupId : String } -> Msg -> Model -> ( Model, Effect Msg )
@@ -126,8 +129,11 @@ update route msg model =
         GotProductsForGroup res ->
             case res of
                 Ok listProduct ->
-                      ({ model | productsInGroup = List.map productToGroupRow listProduct}
-                      , Effect.batch <| List.map Effect.sendCmd <| List.map (doPrediction model.range) listProduct )
+                      ({ model | productsInGroup = List.map productToGroupRow listProduct, debug = ["gotProducts"]}
+                      , Effect.batch <| List.append
+                                          (List.map Effect.sendCmd <| List.map (doPrediction model.range) listProduct)
+                                          (List.map Effect.sendCmd <| List.map (requestToGetCustomValue route.params.groupId) listProduct)
+                      )
                 Err err ->
                       (model
                       , Effect.none)
@@ -154,9 +160,28 @@ update route msg model =
             case res of
                 Ok pred -> ( setPrediction model pred, Effect.none)
                 Err err -> (model, Effect.none)
-        ChangeCustomValue str -> (model, Effect.none)
+        ChangeCustomValue product str -> (model, Effect.none)
         ChangePredictionRange newRange -> ({ model | range = newRange}
                                           , Effect.batch <| List.map Effect.sendCmd <| List.map (doPrediction newRange) <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
+        GotCustomValue res ->
+            case res of
+                Ok value -> ( setCustomValue model value, Effect.none) --setCustomValue model value
+                Err err ->  let oldDebug = model.debug in ({ model | debug = List.append oldDebug ["err"] }, Effect.none)
+
+
+
+requestToGetCustomValue: String -> Product -> Cmd Msg
+requestToGetCustomValue groupId product =
+    Http.get { url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
+             , expect = Http.expectJson GotCustomValue customValueDecoder
+             }
+
+
+customValueDecoder: Decoder CustomValue
+customValueDecoder =
+    map2 CustomValue
+        (field "custom-value" int)
+        (field "product-id" string)
 
 
 getProductFromGroupRow: GroupRow -> Product
@@ -208,7 +233,21 @@ setPrediction model pred =
     in
         { model | productsInGroup = updateProductsInGroup model.productsInGroup }
 
+setCustomValue: Model -> CustomValue -> Model
+setCustomValue model newValue =
+    let
+        updateCustomValue: GroupRow -> GroupRow
+        updateCustomValue group =
+            if group.product.id == newValue.productId then
+                {group | customValue = Just newValue}
+            else
+                group
 
+        updateGroupRow: List GroupRow -> List GroupRow
+        updateGroupRow listGroups =
+            List.map updateCustomValue listGroups
+    in
+        { model | productsInGroup = updateGroupRow model.productsInGroup}
 
 
 
@@ -228,7 +267,7 @@ view : Model -> View Msg
 view model =
     Components.Sidebar.view
         { title = "Pages.Group.GroupId_"
-        , body = [ drawPageBody model ]
+        , body = [ drawPageBody model , Html.div [] <| List.map Html.text model.debug]
         }
 
 drawPageBody: Model -> Html.Html Msg
@@ -257,7 +296,7 @@ productToRow groupRow =
     Html.tr []
         [ Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ groupRow.product.id] [ Html.text groupRow.product.name] ]
         , Html.td [] [Html.text <| predictionToText groupRow.prediction]
-        , Html.td [] [ Html.input [ Html.Attributes.value <| customValueToText groupRow.customValue, Html.Events.onInput ChangeCustomValue ] [] ]--Html.text <| customValueToText groupRow.customValue]
+        , Html.td [] [ Html.input [ Html.Attributes.value <| customValueToText groupRow.customValue, Html.Events.onInput (ChangeCustomValue groupRow.product) ] [] ]--Html.text <| customValueToText groupRow.customValue]
         , Html.td [] [ Html.button [ Html.Events.onClick <| DeleteProductFromGroup groupRow.product.id ] [ Html.text "delete from group"] ]
         ] --todo add delete product from group
 
@@ -269,11 +308,11 @@ predictionToText prediction =
         Just pred -> String.fromFloat pred.value
 
 
-customValueToText: Maybe Float -> String
+customValueToText: Maybe CustomValue -> String
 customValueToText value =
     case value of
         Nothing -> "-"
-        Just float -> String.fromFloat float
+        Just a -> String.fromInt a.value
 
 
 drawSearchAndAddProduct: Model -> Html.Html Msg
