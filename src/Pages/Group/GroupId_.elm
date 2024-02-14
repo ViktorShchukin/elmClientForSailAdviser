@@ -10,6 +10,7 @@ import Shared
 import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map2, map3, field, string, float, int)
+import Json.Encode
 
 import Components.Sidebar
 
@@ -121,6 +122,7 @@ type Msg
     | ChangeCustomValue Product String
     | ChangePredictionRange String
     | GotCustomValue (Result Http.Error CustomValue)
+    | GotResponseUpdateCustomValue (Result Http.Error ())
 
 
 update : Route { groupId : String } -> Msg -> Model -> ( Model, Effect Msg )
@@ -135,8 +137,8 @@ update route msg model =
                                           (List.map Effect.sendCmd <| List.map (requestToGetCustomValue route.params.groupId) listProduct)
                       )
                 Err err ->
-                      (model
-                      , Effect.none)
+                      (model, Effect.none)
+
         GotProductsForSearch res ->
             case res of
                 Ok listProduct ->
@@ -145,29 +147,56 @@ update route msg model =
                 Err err ->
                       (model
                       , Effect.none)
+
         Change newContent ->
             if String.length newContent >= 3 then
                 ({model | content = newContent}, Effect.sendCmd <| doSearch newContent)
             else
                 ({model | content = newContent}, Effect.none)
-        AddProductToGroup productId ->
-            (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
+
+        AddProductToGroup productId -> (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
+
         DeleteProductFromGroup productId -> (model, Effect.sendCmd <| requestToDeleteProductFromGroup route.params.groupId productId)
+
         GotResponseDeleteProduct res -> (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
+
         GotResponseAddProduct res ->
             (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
+
         GotPrediction res ->
             case res of
                 Ok pred -> ( setPrediction model pred, Effect.none)
                 Err err -> (model, Effect.none)
-        ChangeCustomValue product str -> (model, Effect.none)
+
+        ChangeCustomValue product str -> case String.toInt str of
+                                            Nothing -> (model,Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product 0)
+                                            Just a -> (model, Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product a)
+
         ChangePredictionRange newRange -> ({ model | range = newRange}
-                                          , Effect.batch <| List.map Effect.sendCmd <| List.map (doPrediction newRange) <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
+                                          , Effect.batch <| List.map Effect.sendCmd
+                                                         <| List.map (doPrediction newRange)
+                                                         <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
+
         GotCustomValue res ->
             case res of
-                Ok value -> ( setCustomValue model value, Effect.none) --setCustomValue model value
+                Ok value -> ( setCustomValue model value, Effect.none)
                 Err err ->  let oldDebug = model.debug in ({ model | debug = List.append oldDebug ["err"] }, Effect.none)
 
+        GotResponseUpdateCustomValue res -> (model, Effect.batch <| List.map Effect.sendCmd
+                                                                 <| List.map (requestToGetCustomValue route.params.groupId)
+                                                                 <| List.map getProductFromGroupRow model.productsInGroup)
+
+
+requestToUpdateCustomValue: String -> Product -> Int -> Cmd Msg
+requestToUpdateCustomValue groupId product updatedValue =
+    Http.request { method = "PUT"
+                 , headers = []
+                 , url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
+                 , body = Http.jsonBody <| Json.Encode.object [("custom-value", Json.Encode.int updatedValue)]
+                 , expect = Http.expectWhatever GotResponseUpdateCustomValue
+                 , timeout = Nothing
+                 , tracker = Nothing
+                 }
 
 
 requestToGetCustomValue: String -> Product -> Cmd Msg
