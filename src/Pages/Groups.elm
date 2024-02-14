@@ -39,12 +39,14 @@ type  SearchResult
   | Success (List Group)
 
 type alias Model =
-    { groups: SearchResult}
+    { groups: SearchResult
+    , nameForNewGroup: String}
 
 
 init : () -> ( Model, Effect Msg )
 init () =
-    ( {groups = Loading}
+    ( { groups = Loading
+      , nameForNewGroup = ""}
     , Effect.sendCmd doSearchForGroups
     )
 
@@ -71,6 +73,7 @@ type Msg
     | CreateNewGroup
     | GotResponseAddGroup (Result Http.Error ())
     | DeleteGroup String
+    | GotNewGroupName String
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -80,15 +83,16 @@ update msg model =
             case res of
                 Ok listGroups -> ({ model | groups = Success listGroups}, Effect.none)
                 Err error -> ({ model | groups = Failure error}, Effect.none)
-        CreateNewGroup -> (model, Effect.sendCmd requestToCreateNewGroup)
+        CreateNewGroup -> (model, Effect.sendCmd <| requestToCreateNewGroup model.nameForNewGroup)
         GotResponseAddGroup res -> (model, Effect.sendCmd doSearchForGroups)
         DeleteGroup groupId -> (model, Effect.sendCmd <| requestToDeleteGroup groupId)
+        GotNewGroupName name -> ({ model | nameForNewGroup = name}, Effect.none)
 
 
-requestToCreateNewGroup: Cmd Msg
-requestToCreateNewGroup  =
+requestToCreateNewGroup: String -> Cmd Msg
+requestToCreateNewGroup newGroupName =
     Http.post { url = "/dictionary/group"
-              , body = Http.jsonBody <| Json.Encode.object [("name",Json.Encode.string "testName" )]
+              , body = Http.jsonBody <| Json.Encode.object [("name",Json.Encode.string newGroupName )]
               , expect = Http.expectWhatever GotResponseAddGroup
               }
 
@@ -136,7 +140,9 @@ drawPageBody model =
                 Http.BadStatus code -> Html.text ("Bad status " ++ String.fromInt code)
                 Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
         Success listGroups ->
-            Html.div [] [ Html.div [] [ Html.button [ Html.Events.onClick CreateNewGroup ] [Html.text "add new group"]]
+            Html.div [] [ Html.div [] [ Html.fieldset [ role "group"] [ Html.input [ Html.Events.onInput GotNewGroupName, Html.Attributes.placeholder "type name for new group"] []
+                                                                      , Html.button [ Html.Events.onClick CreateNewGroup] [ Html.text "add"]
+                                                                      ]]--Html.button [ Html.Events.onClick CreateNewGroup ] [Html.text "add new group"]]
                         , Html.div [] [ drawGroupTable listGroups]
                         ]
 
@@ -157,3 +163,7 @@ groupToRow group =
                 , Html.td [] [Html.text group.creationDate]
                 , Html.td [] [Html.button [ Html.Events.onClick <| DeleteGroup group.id] [Html.text "delete group"]] --todo complete "delete group" button
                 ]
+
+role: String -> Html.Attribute msg
+role value =
+    Html.Attributes.attribute "role" value
