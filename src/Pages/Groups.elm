@@ -150,7 +150,6 @@ drawPageBody model =
 drawGroupTable: (List Group) -> Html.Html Msg
 drawGroupTable listGroups =
     Html.table [] <| List.append [ Html.th [] [ Html.text "name"]
-                                 , Html.th [] [Html.text "id"]
                                  , Html.th [] [Html.text "creation date"]
                                  ] <| List.map groupToRow listGroups
 
@@ -158,10 +157,9 @@ drawGroupTable listGroups =
 groupToRow: Group -> Html.Html Msg
 groupToRow group =
     Html.tr []
-                [ Html.td [] [Html.a [Html.Attributes.href <| "/group/" ++ group.id] [ Html.text group.name]]
-                , Html.td [] [Html.text group.id]
+                [ Html.td [] [Html.a [Html.Attributes.href <| "/groups/" ++ group.id] [ Html.text group.name]]
                 , Html.td [] [Html.text group.creationDate]
-                , Html.td [] [Html.button [ Html.Events.onClick <| DeleteGroup group.id] [Html.text "delete group"]] --todo complete "delete group" button
+                , Html.td [] [Html.span [ Html.Attributes.class "pico-color-pink-450", Html.Events.onClick <| DeleteGroup group.id] [Html.text "x"]]
                 ]
 
 role: String -> Html.Attribute msg

@@ -1,4 +1,4 @@
-module Pages.Group.GroupId_ exposing (Model, Msg, page)
+module Pages.Groups.GroupId_ exposing (Model, Msg, page)
 
 import Effect exposing (Effect)
 import Html.Attributes
@@ -326,7 +326,7 @@ productToRow groupRow =
         [ Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ groupRow.product.id] [ Html.text groupRow.product.name] ]
         , Html.td [] [Html.text <| predictionToText groupRow.prediction]
         , Html.td [] [ Html.input [ Html.Attributes.value <| customValueToText groupRow.customValue, Html.Events.onInput (ChangeCustomValue groupRow.product) ] [] ]--Html.text <| customValueToText groupRow.customValue]
-        , Html.td [] [ Html.button [ Html.Events.onClick <| DeleteProductFromGroup groupRow.product.id ] [ Html.text "delete from group"] ]
+        , Html.td [] [ Html.span [ Html.Attributes.class "pico-color-pink-450", Html.Events.onClick <| DeleteProductFromGroup groupRow.product.id ] [ Html.text "x"] ]
         ] --todo add delete product from group
 
 
@@ -354,6 +354,10 @@ drawSearchAndAddProduct model =
 productToRowForSearch: Product -> Html.Html Msg
 productToRowForSearch product =
     Html.tr []
-        [ Html.td [] [ Html.button [ Html.Events.onClick <| AddProductToGroup product.id ] [ Html.text "add to group"] ]
-        , Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ product.id] [ Html.text product.name] ]
+        [ Html.td [] [ Html.span [ Html.Attributes.class "pico-color-green-200", Html.Events.onClick <| AddProductToGroup product.id, dataTooltip "Add product to group" ] [ Html.text "<<-"] ]
+        , Html.td [] [ Html.text product.name ]
         ]
+
+dataTooltip: String -> Html.Attribute msg
+dataTooltip value =
+    Html.Attributes.attribute "data-tooltip" value

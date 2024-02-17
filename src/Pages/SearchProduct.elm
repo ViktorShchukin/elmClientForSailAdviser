@@ -120,7 +120,7 @@ view model =
             { title = "SearchProduct"
             , body = [
                         div []
-                        [ input [ placeholder "type product name for", value model.content, onInput Change ] []
+                        [ input [ placeholder "type product name", value model.content, onInput Change ] []
                         , div [] <| drawProductsTable model.products
                         , div [] [text statusString]
                         ]
@@ -145,13 +145,11 @@ drawProductsTable products =
              [table [ attribute "role" "grid" ]
                 (List.append
                 [ th [] [text "product name"]
-                , th [] [text "Product card"]
                 ]
                 <| List.map productToRow pl)]
 
 productToRow: Product -> Html Msg
 productToRow product =
     tr []
-        [ td [] [text product.name]
-        , td [] [ a [href <| "/product-card/" ++ product.id] [ text "product card"] ]
+        [ td [] [  a [href <| "/product-card/" ++ product.id] [ text product.name ] ]
         ]
