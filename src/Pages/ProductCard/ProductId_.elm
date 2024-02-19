@@ -9,7 +9,10 @@ import Shared
 import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map2, map5, field, string, int, float)
+import Time
+import Iso8601
 
+import MyTime
 import Components.Sidebar
 
 page : Shared.Model -> Route { productId : String } -> Page Model Msg
@@ -30,7 +33,7 @@ type alias Sale =
     , productId: String
     , quantity: Int
     , totalValue: Float
-    , date: String
+    , date: Time.Posix
     }
 
 type  SearchResult
@@ -39,7 +42,7 @@ type  SearchResult
     | Success (List Sale)
 
 type alias Prediction =
-    { range: String
+    { range: Time.Posix
     , value: Float
     }
 
@@ -77,7 +80,7 @@ saleDecoder =
         (field "product-id" string)
         (field "quantity" int)
         (field "total-sum" float)
-        (field "sale-date" string)
+        (field "sale-date" Iso8601.decoder)
 
 
 
@@ -127,7 +130,7 @@ doPrediction route range =
 predictionDecoder: Decoder Prediction
 predictionDecoder =
     map2 Prediction
-        (field "range" string)
+        (field "range" Iso8601.decoder)
         (field "value" float)
 
 -- SUBSCRIPTIONS
@@ -174,7 +177,7 @@ drawSalesTable res =
 saleToRow: Sale -> Html.Html Msg
 saleToRow sale =
     Html.tr []
-            [ Html.td [] [Html.text sale.date]
+            [ Html.td [] [Html.text <| MyTime.timeToHumanReadable sale.date]
             , Html.td [] [Html.text <| String.fromInt sale.quantity]
             ]
 
@@ -200,7 +203,7 @@ drawPredictionRow res =
                 Http.BadBody reason -> Html.text ("BadBody. " ++ reason)
         SuccessPrediction prediction ->
              Html.tr []
-                    [ Html.td [] [ Html.text prediction.range ]
+                    [ Html.td [] [ Html.text <| MyTime.timeToHumanReadable prediction.range ]
                     , Html.td [] [ Html.text <| String.fromFloat prediction.value ]
                     ]
 

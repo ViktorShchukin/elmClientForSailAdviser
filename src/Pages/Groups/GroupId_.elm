@@ -11,7 +11,11 @@ import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map2, map3, field, string, float, int)
 import Json.Encode
+import Time
+import Iso8601
+import Task
 
+import MyTime
 import Components.Sidebar
 
 
@@ -35,7 +39,7 @@ type alias Product =
     }
 
 type alias Prediction =
-    { range: String
+    { range: Time.Posix
     , value: Float
     , productId: String
     }
@@ -51,12 +55,18 @@ type alias GroupRow =
     , customValue: Maybe CustomValue
     }
 
+type alias Date =
+    { humanString: String
+    , posix: Time.Posix
+    , status: Maybe String
+    }
+
 
 type alias Model =
     { productsInSearch: List Product
     , productsInGroup: List GroupRow
     , content: String
-    , range: String
+    , range: Date
     , debug: List String
     }
 
@@ -71,7 +81,7 @@ init route () =
     ( { productsInSearch = []
       , productsInGroup = []
       , content = ""
-      , range = "2023-12-27T15:56:04" --todo create normal input for prediction and add date time module
+      , range = Date "" (Time.millisToPosix 0) Nothing  --todo create normal input for prediction and add date time module
       , debug = []
       }
     , Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId
@@ -93,17 +103,17 @@ productDecoder =
         (field "name" string)
 
 
-doPrediction: String  -> Product -> Cmd Msg
+doPrediction: Time.Posix  -> Product -> Cmd Msg
 doPrediction range product =
     Http.get
-        { url = "/dictionary/product/" ++ product.id ++ "/prediction/" ++ range
+        { url = "/dictionary/product/" ++ product.id ++ "/prediction/" ++ Iso8601.fromTime range
         , expect = Http.expectJson GotPrediction  predictionDecoder}
 
 
 predictionDecoder: Decoder Prediction
 predictionDecoder =
     map3 Prediction
-        (field "range" string)
+        (field "range" Iso8601.decoder)
         (field "value" float)
         (field "product-id" string)
 
@@ -133,7 +143,7 @@ update route msg model =
                 Ok listProduct ->
                       ({ model | productsInGroup = List.map productToGroupRow listProduct, debug = ["gotProducts"]}
                       , Effect.batch <| List.append
-                                          (List.map Effect.sendCmd <| List.map (doPrediction model.range) listProduct)
+                                          (List.map Effect.sendCmd <| List.map (doPrediction model.range.posix) listProduct)
                                           (List.map Effect.sendCmd <| List.map (requestToGetCustomValue route.params.groupId) listProduct)
                       )
                 Err err ->
@@ -172,10 +182,13 @@ update route msg model =
                                             Nothing -> (model,Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product 0)
                                             Just a -> (model, Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product a)
 
-        ChangePredictionRange newRange -> ({ model | range = newRange}
-                                          , Effect.batch <| List.map Effect.sendCmd
-                                                         <| List.map (doPrediction newRange)
-                                                         <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
+        ChangePredictionRange newRange -> case MyTime.fromInputStringToTime newRange of
+                                              Nothing -> (setDateError model newRange, Effect.none)
+                                              Just newTime ->
+                                                  (setDate model newTime newRange
+                                                  , Effect.batch <| List.map Effect.sendCmd
+                                                                 <| List.map (doPrediction newTime)
+                                                                 <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
 
         GotCustomValue res ->
             case res of
@@ -185,6 +198,32 @@ update route msg model =
         GotResponseUpdateCustomValue res -> (model, Effect.batch <| List.map Effect.sendCmd
                                                                  <| List.map (requestToGetCustomValue route.params.groupId)
                                                                  <| List.map getProductFromGroupRow model.productsInGroup)
+
+
+setDate: Model -> Time.Posix -> String -> Model
+setDate model newTime humanInput =
+    case model.range.status of
+        Nothing ->
+            let
+                oldRange = model.range
+                newRange = { oldRange | posix = newTime, humanString = humanInput}
+            in
+                { model | range = newRange}
+        Just value ->
+            let
+                oldRange = model.range
+                newRange = { oldRange | posix = newTime, humanString = humanInput, status = Nothing}
+            in
+                { model | range = newRange}
+
+
+setDateError: Model -> String -> Model
+setDateError model humanInput =
+    let
+        oldRange = model.range
+        newRange = { oldRange | humanString = humanInput, status = Just "--invalid input"}
+    in
+        { model | range = newRange}
 
 
 requestToUpdateCustomValue: String -> Product -> Int -> Cmd Msg
@@ -301,7 +340,8 @@ view model =
 
 drawPageBody: Model -> Html.Html Msg
 drawPageBody model =
-    Html.div [ Html.Attributes.class "grid"] [ Html.div [] [ Html.div [] [  Html.input [ Html.Attributes.placeholder "type prediction date", Html.Attributes.value model.range, Html.Events.onInput ChangePredictionRange] [] ]
+    Html.div [ Html.Attributes.class "grid"] [ Html.div [] [ Html.div [] [ Html.input [ Html.Attributes.placeholder "type prediction date", Html.Attributes.value model.range.humanString, Html.Events.onInput ChangePredictionRange] []
+                                                                         , Html.text <| printDateError model ]
                                                            , drawProductInGroup model ]
                                              , Html.div [] [ Html.input [ Html.Attributes.placeholder "type product name", Html.Attributes.value model.content, Html.Events.onInput Change] []
                                                            , drawSearchAndAddProduct model] ]
@@ -361,3 +401,15 @@ productToRowForSearch product =
 dataTooltip: String -> Html.Attribute msg
 dataTooltip value =
     Html.Attributes.attribute "data-tooltip" value
+
+prepareDateForPrint: Model -> String
+prepareDateForPrint model =
+    case model.range.status of
+        Nothing -> model.range.humanString
+        Just str -> model.range.humanString ++ "    " ++ str
+
+printDateError: Model -> String
+printDateError model =
+    case model.range.status of
+        Nothing -> ""
+        Just value -> value

@@ -11,7 +11,10 @@ import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map3, map5, field, string, int, float)
 import Json.Encode
+import Time
+import Iso8601
 
+import MyTime
 import Components.Sidebar
 
 
@@ -31,7 +34,7 @@ page shared route =
 type alias Group =
     { id: String
     , name: String
-    , creationDate: String}
+    , creationDate: Time.Posix}
 
 type  SearchResult
   = Failure Http.Error
@@ -62,7 +65,7 @@ groupDecoder =
     map3 Group
         (field "id" string)
         (field "name" string)
-        (field "creation-date" string)
+        (field "creation-date" Iso8601.decoder)
 
 
 -- UPDATE
@@ -158,7 +161,7 @@ groupToRow: Group -> Html.Html Msg
 groupToRow group =
     Html.tr []
                 [ Html.td [] [Html.a [Html.Attributes.href <| "/groups/" ++ group.id] [ Html.text group.name]]
-                , Html.td [] [Html.text group.creationDate]
+                , Html.td [] [Html.text <| MyTime.timeToHumanReadable group.creationDate]
                 , Html.td [] [Html.span [ Html.Attributes.class "pico-color-pink-450", Html.Events.onClick <| DeleteGroup group.id] [Html.text "x"]]
                 ]
 
