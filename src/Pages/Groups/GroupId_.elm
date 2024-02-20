@@ -84,8 +84,13 @@ init route () =
       , range = Date "" (Time.millisToPosix 0) Nothing  --todo create normal input for prediction and add date time module
       , debug = []
       }
-    , Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId
+    , Effect.batch  [Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId, Effect.sendCmd getInitTime]
     )
+
+
+getInitTime: Cmd Msg
+getInitTime =
+    Task.perform InitTime Time.now
 
 
 doSearchForProductsInGroup: String -> Cmd Msg
@@ -133,6 +138,7 @@ type Msg
     | ChangePredictionRange String
     | GotCustomValue (Result Http.Error CustomValue)
     | GotResponseUpdateCustomValue (Result Http.Error ())
+    | InitTime Time.Posix
 
 
 update : Route { groupId : String } -> Msg -> Model -> ( Model, Effect Msg )
@@ -185,7 +191,7 @@ update route msg model =
         ChangePredictionRange newRange -> case MyTime.fromInputStringToTime newRange of
                                               Nothing -> (setDateError model newRange, Effect.none)
                                               Just newTime ->
-                                                  (setDate model newTime newRange
+                                                  (setDate model newTime
                                                   , Effect.batch <| List.map Effect.sendCmd
                                                                  <| List.map (doPrediction newTime)
                                                                  <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
@@ -199,20 +205,22 @@ update route msg model =
                                                                  <| List.map (requestToGetCustomValue route.params.groupId)
                                                                  <| List.map getProductFromGroupRow model.productsInGroup)
 
+        InitTime timeNow -> (setDate model <| MyTime.plusOneMoth timeNow, Effect.none)
 
-setDate: Model -> Time.Posix -> String -> Model
-setDate model newTime humanInput =
+
+setDate: Model -> Time.Posix -> Model
+setDate model newTime  =
     case model.range.status of
         Nothing ->
             let
                 oldRange = model.range
-                newRange = { oldRange | posix = newTime, humanString = humanInput}
+                newRange = { oldRange | posix = newTime, humanString = MyTime.timeToHumanReadable newTime}
             in
                 { model | range = newRange}
         Just value ->
             let
                 oldRange = model.range
-                newRange = { oldRange | posix = newTime, humanString = humanInput, status = Nothing}
+                newRange = { oldRange | posix = newTime, humanString = MyTime.timeToHumanReadable newTime, status = Nothing}
             in
                 { model | range = newRange}
 
