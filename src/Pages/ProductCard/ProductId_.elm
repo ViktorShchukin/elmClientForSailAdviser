@@ -14,6 +14,8 @@ import Iso8601
 
 import MyTime
 import Components.Sidebar
+import Sale exposing (Sale, saleDecoder)
+import Prediction exposing (Prediction, predictionDecoder)
 
 page : Shared.Model -> Route { productId : String } -> Page Model Msg
 page shared route =
@@ -28,23 +30,12 @@ page shared route =
 
 -- INIT
 
-type alias Sale =
-    { id: String
-    , productId: String
-    , quantity: Int
-    , totalValue: Float
-    , date: Time.Posix
-    }
-
 type  SearchResult
     = Failure
     | Loading
     | Success (List Sale)
 
-type alias Prediction =
-    { range: Time.Posix
-    , value: Float
-    }
+
 
 type PredictionResult
     = FailurePrediction Http.Error
@@ -68,19 +59,12 @@ init route () =
             { url = "/dictionary/product/" ++ route.params.productId ++ "/sale"
             , expect = Http.expectJson GotSales <| Json.Decode.list saleDecoder
             }
-         , Effect.sendCmd <| doPrediction route "2023-12-27T15:56:04"
+         , Effect.sendCmd <| doPrediction route "2023-12-27T15:56:04Z"
          ]
 
     )
 
-saleDecoder: Decoder Sale
-saleDecoder =
-    map5 Sale
-        (field "id" string)
-        (field "product-id" string)
-        (field "quantity" int)
-        (field "total-sum" float)
-        (field "sale-date" Iso8601.decoder)
+
 
 
 
@@ -127,11 +111,6 @@ doPrediction route range =
         { url = "/dictionary/product/" ++ route.params.productId ++ "/prediction/" ++ range
         , expect = Http.expectJson GotPrediction  predictionDecoder}
 
-predictionDecoder: Decoder Prediction
-predictionDecoder =
-    map2 Prediction
-        (field "range" Iso8601.decoder)
-        (field "value" float)
 
 -- SUBSCRIPTIONS
 

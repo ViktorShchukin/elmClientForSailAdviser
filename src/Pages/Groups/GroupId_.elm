@@ -18,6 +18,8 @@ import File.Download
 
 import MyTime
 import Components.Sidebar
+import Product exposing (Product, productDecoder)
+import Prediction exposing (Prediction, predictionDecoder)
 
 
 page : Shared.Model -> Route { groupId : String } -> Page Model Msg
@@ -34,16 +36,6 @@ page shared route =
 -- INIT
 
 
-type alias Product =
-    { id: String
-    , name: String
-    }
-
-type alias Prediction =
-    { range: Time.Posix
-    , value: Float
-    , productId: String
-    }
 
 type alias CustomValue =
     { value: Int
@@ -107,15 +99,6 @@ doSearchForProductsInGroup route =
                   { url = "/dictionary/group/" ++ route ++ "/product"
                   , expect = Http.expectJson GotProductsForGroup <| Json.Decode.list productDecoder}
 
-
-
-productDecoder: Decoder Product
-productDecoder =
-    map2 Product
-        (field "id" string)
-        (field "name" string)
-
-
 doPrediction: Time.Posix  -> Product -> Cmd Msg
 doPrediction range product =
     Http.get
@@ -123,12 +106,7 @@ doPrediction range product =
         , expect = Http.expectJson GotPrediction  predictionDecoder}
 
 
-predictionDecoder: Decoder Prediction
-predictionDecoder =
-    map3 Prediction
-        (field "range" Iso8601.decoder)
-        (field "value" float)
-        (field "product-id" string)
+
 
 requestToGetGroup: String -> Cmd Msg
 requestToGetGroup groupId=

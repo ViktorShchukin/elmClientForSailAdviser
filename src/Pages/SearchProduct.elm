@@ -10,6 +10,7 @@ import Json.Decode exposing (Decoder, map2, field, string)
 import Route
 
 import Components.Sidebar
+import Product exposing (Product, productDecoder)
 
 page : Page Model Msg
 page =
@@ -24,10 +25,7 @@ page =
 
 -- INIT
 
-type alias Product =
-    { id: String
-    , name: String
-    }
+
 
 type  SearchResult = Failure Http.Error
   | Loading
@@ -85,15 +83,11 @@ update msg model =
 doSearch: String -> Cmd Msg
 doSearch str =
   Http.get
-      { url = "/dictionary/product?product_name=" ++ str
+      { url = "/dictionary/product?productName=" ++ str
       , expect = Http.expectJson GotProduct (Json.Decode.list productDecoder)
       }
 
-productDecoder: Decoder Product
-productDecoder =
-    map2 Product
-        (field "id" string)
-        (field "name" string)
+
 
 
 -- SUBSCRIPTIONS
