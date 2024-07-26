@@ -120,7 +120,7 @@ groupDecoder =
     map3 Group
         (field "id" string)
         (field "name" string)
-        (field "creation-date" string)
+        (field "creationDate" string)
 
 
 -- UPDATE
@@ -304,7 +304,7 @@ requestToDeleteProductFromGroup groupId productId =
 doSearch: String -> Cmd Msg
 doSearch str =
     Http.get
-              { url = "/dictionary/product?product_name=" ++ str
+              { url = "/dictionary/product?productName=" ++ str
               , expect = Http.expectJson GotProductsForSearch (Json.Decode.list productDecoder)
               }
 

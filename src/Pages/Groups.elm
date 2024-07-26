@@ -16,6 +16,7 @@ import Iso8601
 
 import MyTime
 import Components.Sidebar
+import Group exposing (Group, groupDecoder)
 
 
 page : Shared.Model -> Route () -> Page Model Msg
@@ -27,14 +28,7 @@ page shared route =
         , view = view
         }
 
-
-
 -- INIT
-
-type alias Group =
-    { id: String
-    , name: String
-    , creationDate: Time.Posix}
 
 type  SearchResult
   = Failure Http.Error
@@ -58,15 +52,6 @@ doSearchForGroups  =
     Http.get { url = "/dictionary/group"
              , expect = Http.expectJson GotGroups <| Json.Decode.list groupDecoder
              }
-
-
-groupDecoder: Decoder Group
-groupDecoder =
-    map3 Group
-        (field "id" string)
-        (field "name" string)
-        (field "creation-date" Iso8601.decoder)
-
 
 -- UPDATE
 
