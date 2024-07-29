@@ -20,6 +20,7 @@ import MyTime
 import Components.Sidebar
 import Product exposing (Product, productDecoder)
 import Prediction exposing (Prediction, predictionDecoder)
+import Group exposing (Group, groupDecoder)
 
 
 page : Shared.Model -> Route { groupId : String } -> Page Model Msg
@@ -54,12 +55,6 @@ type alias Date =
     , status: Maybe String
     }
 
-type alias Group =
-    { id: String
-    , name: String
-    , creationDate: String}
-
-
 type alias Model =
     { productsInSearch: List Product
     , productsInGroup: List GroupRow
@@ -81,7 +76,7 @@ init route () =
       , productsInGroup = []
       , content = ""
       , range = Date "" (Time.millisToPosix 0) Nothing  --todo create normal input for prediction and add date time module
-      , group = Group route.params.groupId "" ""
+      , group = Group route.params.groupId "" <| Time.millisToPosix 0
       , debug = []
       }
     , Effect.batch  [Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId, Effect.sendCmd getInitTime, Effect.sendCmd <| requestToGetGroup route.params.groupId]
@@ -113,14 +108,6 @@ requestToGetGroup groupId=
     Http.get
         { url = "/dictionary/group/" ++ groupId
         , expect = Http.expectJson GotGroup groupDecoder}
-
-
-groupDecoder: Decoder Group
-groupDecoder =
-    map3 Group
-        (field "id" string)
-        (field "name" string)
-        (field "creationDate" string)
 
 
 -- UPDATE
