@@ -9,12 +9,13 @@ import Page exposing (Page)
 import Shared
 import View exposing (View)
 import Http
-import Json.Decode exposing (Decoder, map2, map3, field, string, float, int)
+import Json.Decode exposing (Decoder, map2, map3, field, string, float, int, maybe)
 import Json.Encode
 import Time
 import Iso8601
 import Task
 import File.Download
+import Debug
 
 import MyTime
 import Components.Sidebar
@@ -36,17 +37,10 @@ page shared route =
 
 -- INIT
 
-
-
-type alias CustomValue =
-    { value: Int
-    , productId: String
-    }
-
 type alias GroupRow =
     { product: Product
     , prediction: Maybe Prediction
-    , customValue: Maybe CustomValue
+    , customValue: Int
     }
 
 type alias Date =
@@ -64,11 +58,6 @@ type alias Model =
     , debug: List String
     }
 
-productToGroupRow: Product -> GroupRow
-productToGroupRow product =
-    GroupRow product Nothing Nothing
-
-
 
 init : Route { groupId : String } -> () -> ( Model, Effect Msg )
 init route () =
@@ -79,8 +68,14 @@ init route () =
       , group = Group route.params.groupId "" <| Time.millisToPosix 0
       , debug = []
       }
-    , Effect.batch  [Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId, Effect.sendCmd getInitTime, Effect.sendCmd <| requestToGetGroup route.params.groupId]
+    , Effect.batch  [ Effect.sendCmd <| getGroupRows route.params.groupId
+                    , Effect.sendCmd getInitTime
+                    , Effect.sendCmd <| requestToGetGroup route.params.groupId]
     )
+
+--productToGroupRow: Product -> GroupRow
+--productToGroupRow product =
+--    GroupRow product Nothing Nothing
 
 
 getInitTime: Cmd Msg
@@ -88,11 +83,11 @@ getInitTime =
     Task.perform InitTime Time.now
 
 
-doSearchForProductsInGroup: String -> Cmd Msg
-doSearchForProductsInGroup route =
-    Http.get
-                  { url = "/dictionary/group/" ++ route ++ "/product"
-                  , expect = Http.expectJson GotProductsForGroup <| Json.Decode.list productDecoder}
+--doSearchForProductsInGroup: String -> Cmd Msg
+--doSearchForProductsInGroup route =
+--    Http.get
+--                  { url = "/dictionary/group/" ++ route ++ "/product"
+--                  , expect = Http.expectJson GotProductsForGroup <| Json.Decode.list productDecoder}
 
 doPrediction: Time.Posix  -> Product -> Cmd Msg
 doPrediction range product =
@@ -109,42 +104,91 @@ requestToGetGroup groupId=
         { url = "/dictionary/group/" ++ groupId
         , expect = Http.expectJson GotGroup groupDecoder}
 
+groupRowDecoder: Decoder GroupRow
+groupRowDecoder =
+    map3 GroupRow
+        (field "product" productDecoder)
+        (maybe (field "prediction" predictionDecoder))
+        (field "customValue" int)
+
+getGroupRows: String -> Cmd Msg
+getGroupRows groupId =
+    Http.get
+        { url = "/dictionary/group/" ++ groupId ++ "/rows"
+        , expect = Http.expectJson GotGroupRows <| Json.Decode.list groupRowDecoder}
+
+updateDebug: String -> Model -> Model
+updateDebug info model =
+    let
+        old = model.debug
+    in
+    { model | debug = List.append old [ info ]}
+
 
 -- UPDATE
 
 
 type Msg
-    = GotProductsForGroup (Result Http.Error (List Product))
-    | GotProductsForSearch (Result Http.Error (List Product))
-    | Change String
-    | AddProductToGroup String
-    | DeleteProductFromGroup String
-    | GotResponseAddProduct (Result Http.Error ())
-    | GotResponseDeleteProduct (Result Http.Error ())
-    | GotPrediction (Result Http.Error Prediction)
-    | ChangeCustomValue Product String
-    | ChangePredictionRange String
-    | GotCustomValue (Result Http.Error CustomValue)
-    | GotResponseUpdateCustomValue (Result Http.Error ())
+    = GotGroup (Result Http.Error Group)
     | InitTime Time.Posix
-    | GotGroup (Result Http.Error Group)
-    | DownloadFile
 
+    | GotGroupRows (Result Http.Error (List GroupRow))
+
+    | AddProductToGroup String
+    | GotResponseAddProduct (Result Http.Error ())
+
+    | DeleteProductFromGroup String
+    | GotResponseDeleteProduct (Result Http.Error ())
+
+    | ChangeCustomValue Product String
+    | GotResponseUpdateCustomValue (Result Http.Error ())
+
+    | Change String
+    | GotProductsForSearch (Result Http.Error (List Product))
+
+    | ChangePredictionRange String
+    | GotPrediction (Result Http.Error Prediction)
+
+    | DownloadFile
+    --| GotCustomValue (Result Http.Error CustomValue)
+    --| GotProductsForGroup (Result Http.Error (List Product))
 
 
 update : Route { groupId : String } -> Msg -> Model -> ( Model, Effect Msg )
 update route msg model =
     case msg of
-        GotProductsForGroup res ->
+        GotGroup res ->
             case res of
-                Ok listProduct ->
-                      ({ model | productsInGroup = List.map productToGroupRow listProduct}
-                      , Effect.batch <| List.append
-                                          (List.map Effect.sendCmd <| List.map (doPrediction model.range.posix) listProduct)
-                                          (List.map Effect.sendCmd <| List.map (requestToGetCustomValue route.params.groupId) listProduct)
-                      )
-                Err err ->
-                      (model, Effect.none)
+                Ok group -> ( { model | group = group }, Effect.none)
+                Err err ->  ( model , Effect.none)
+
+        InitTime timeNow -> (setDate model <| MyTime.plusOneMoth timeNow, Effect.none)
+        ----
+        -- todo end logic
+        GotGroupRows res ->
+            case res of
+                Ok groupRowList -> ( { model | productsInGroup = groupRowList } , Effect.none)
+                Err err -> ( updateDebug ("GotGroupRows: " ++ getHttpErrorInfo err)  model, Effect.none)
+        ----
+        AddProductToGroup productId -> (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
+
+        GotResponseAddProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+        ----
+        DeleteProductFromGroup productId -> (model, Effect.sendCmd <| requestToDeleteProductFromGroup route.params.groupId productId)
+
+        GotResponseDeleteProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+        ----
+        ChangeCustomValue product str -> case String.toInt str of
+                                                    Nothing -> (model,Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product 0)
+                                                    Just a -> (model, Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product a)
+
+        GotResponseUpdateCustomValue res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+        ----
+        Change newContent ->
+            if String.length newContent >= 3 then
+                ({model | content = newContent}, Effect.sendCmd <| doSearch newContent)
+            else
+                ({model | content = newContent}, Effect.none)
 
         GotProductsForSearch res ->
             case res of
@@ -154,31 +198,7 @@ update route msg model =
                 Err err ->
                       (model
                       , Effect.none)
-
-        Change newContent ->
-            if String.length newContent >= 3 then
-                ({model | content = newContent}, Effect.sendCmd <| doSearch newContent)
-            else
-                ({model | content = newContent}, Effect.none)
-
-        AddProductToGroup productId -> (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
-
-        DeleteProductFromGroup productId -> (model, Effect.sendCmd <| requestToDeleteProductFromGroup route.params.groupId productId)
-
-        GotResponseDeleteProduct res -> (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
-
-        GotResponseAddProduct res ->
-            (model, Effect.sendCmd <| doSearchForProductsInGroup route.params.groupId)
-
-        GotPrediction res ->
-            case res of
-                Ok pred -> ( setPrediction model pred, Effect.none)
-                Err err -> (model, Effect.none)
-
-        ChangeCustomValue product str -> case String.toInt str of
-                                            Nothing -> (model,Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product 0)
-                                            Just a -> (model, Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product a)
-
+        ----
         ChangePredictionRange newRange -> case MyTime.fromInputStringToTime newRange of
                                               Nothing -> (setDateError model newRange, Effect.none)
                                               Just newTime ->
@@ -186,25 +206,28 @@ update route msg model =
                                                   , Effect.batch <| List.map Effect.sendCmd
                                                                  <| List.map (doPrediction newTime)
                                                                  <| List.map getProductFromGroupRow model.productsInGroup) --todo need to do request for prediction
-
-        GotCustomValue res ->
+        GotPrediction res ->
             case res of
-                Ok value -> ( setCustomValue model value, Effect.none)
-                Err err ->  let oldDebug = model.debug in ({ model | debug = List.append oldDebug ["err"] }, Effect.none)
-
-        GotResponseUpdateCustomValue res -> (model, Effect.batch <| List.map Effect.sendCmd
-                                                                 <| List.map (requestToGetCustomValue route.params.groupId)
-                                                                 <| List.map getProductFromGroupRow model.productsInGroup)
-
-        InitTime timeNow -> (setDate model <| MyTime.plusOneMoth timeNow, Effect.none)
-
-        GotGroup res ->
-            case res of
-                Ok group -> let oldDebug = model.debug in ({ model | group = group, debug = (List.append oldDebug ["got-group"])}, Effect.none)
-                Err err -> let oldDebug = model.debug in ({ model | debug = (List.append oldDebug ["err-group", getHttpErrorInfo err])}, Effect.none)
-
+                Ok pred -> ( setPrediction model pred, Effect.none)
+                Err err -> (model, Effect.none)
+        ----
         DownloadFile -> (model, Effect.sendCmd <| File.Download.url <| getFileUrl model)
 
+        --GotCustomValue res ->
+        --    case res of
+        --        Ok value -> ( setCustomValue model value, Effect.none)
+        --        Err err ->  let oldDebug = model.debug in ({ model | debug = List.append oldDebug ["err"] }, Effect.none)
+
+        --GotProductsForGroup res ->
+        --    case res of
+        --        Ok listProduct ->
+        --              ({ model | productsInGroup = List.map productToGroupRow listProduct}
+        --              , Effect.batch <| List.append
+        --                                  (List.map Effect.sendCmd <| List.map (doPrediction model.range.posix) listProduct)
+        --                                  (List.map Effect.sendCmd <| List.map (requestToGetCustomValue route.params.groupId) listProduct)
+        --              )
+        --        Err err ->
+        --              (model, Effect.none)
 
 
 getFileUrl: Model -> String
@@ -250,18 +273,18 @@ requestToUpdateCustomValue groupId product updatedValue =
                  }
 
 
-requestToGetCustomValue: String -> Product -> Cmd Msg
-requestToGetCustomValue groupId product =
-    Http.get { url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
-             , expect = Http.expectJson GotCustomValue customValueDecoder
-             }
+--requestToGetCustomValue: String -> Product -> Cmd Msg
+--requestToGetCustomValue groupId product =
+--    Http.get { url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
+--             , expect = Http.expectJson GotCustomValue customValueDecoder
+--             }
 
 
-customValueDecoder: Decoder CustomValue
-customValueDecoder =
-    map2 CustomValue
-        (field "custom-value" int)
-        (field "product-id" string)
+--customValueDecoder: Decoder CustomValue
+--customValueDecoder =
+--    map2 CustomValue
+--        (field "custom-value" int)
+--        (field "product-id" string)
 
 
 getProductFromGroupRow: GroupRow -> Product
@@ -313,21 +336,21 @@ setPrediction model pred =
     in
         { model | productsInGroup = updateProductsInGroup model.productsInGroup }
 
-setCustomValue: Model -> CustomValue -> Model
-setCustomValue model newValue =
-    let
-        updateCustomValue: GroupRow -> GroupRow
-        updateCustomValue group =
-            if group.product.id == newValue.productId then
-                {group | customValue = Just newValue}
-            else
-                group
-
-        updateGroupRow: List GroupRow -> List GroupRow
-        updateGroupRow listGroups =
-            List.map updateCustomValue listGroups
-    in
-        { model | productsInGroup = updateGroupRow model.productsInGroup}
+--setCustomValue: Model -> CustomValue -> Model
+--setCustomValue model newValue =
+--    let
+--        updateCustomValue: GroupRow -> GroupRow
+--        updateCustomValue group =
+--            if group.product.id == newValue.productId then
+--                {group | customValue = Just newValue}
+--            else
+--                group
+--
+--        updateGroupRow: List GroupRow -> List GroupRow
+--        updateGroupRow listGroups =
+--            List.map updateCustomValue listGroups
+--    in
+--        { model | productsInGroup = updateGroupRow model.productsInGroup}
 
 
 
@@ -347,17 +370,29 @@ view : Model -> View Msg
 view model =
     Components.Sidebar.view
         { title = "Pages.Group.GroupId_"
-        , body = [ Html.h1 [] [ Html.text model.group.name] , drawPageBody model , Html.div [] <| List.map Html.text model.debug]
+        , body = [ Html.h1 [] [ Html.text model.group.name], drawPageBody model , Html.div [] <| List.map Html.text model.debug ]
         }
 
 drawPageBody: Model -> Html.Html Msg
 drawPageBody model =
-      Html.div [ Html.Attributes.class "grid"] [ Html.div [] [ Html.fieldset [role "group"] [ Html.input [ Html.Attributes.placeholder "type prediction date", Html.Attributes.value model.range.humanString, Html.Events.onInput ChangePredictionRange] []
-                                                                                            , Html.button [ Html.Events.onClick DownloadFile ] [  Html.text "file" ]]
-                                                             , Html.a [ Html.Attributes.class "pico-color-pink-450"] [ Html.text <| printDateError model ]  -- Html.Attributes.href <| getFileUrl model
-                                                             , drawProductInGroup model ]
-                                               , Html.div [] [ Html.input [ Html.Attributes.placeholder "type product name", Html.Attributes.value model.content, Html.Events.onInput Change] []
-                                                             , drawSearchAndAddProduct model] ]
+      Html.div [ Html.Attributes.class "grid"]
+        [ Html.div []
+            [ Html.fieldset [role "group"]
+                [ Html.input
+                    [ Html.Attributes.placeholder "type prediction date"
+                    , Html.Attributes.value model.range.humanString
+                    , Html.Events.onInput ChangePredictionRange
+                    ]
+                    []
+                , Html.button [ Html.Events.onClick DownloadFile ] [  Html.text "file" ]
+                ]
+            , Html.a [ Html.Attributes.class "pico-color-pink-450"] [ Html.text <| printDateError model ]  -- Html.Attributes.href <| getFileUrl model
+            , drawProductInGroup model
+            ]
+        , Html.div []
+            [ Html.input [ Html.Attributes.placeholder "type product name", Html.Attributes.value model.content, Html.Events.onInput Change] []
+            , drawSearchAndAddProduct model]
+        ]
 
 
 
@@ -378,7 +413,7 @@ productToRow groupRow =
     Html.tr []
         [ Html.td [] [ Html.a [Html.Attributes.href <| "/product-card/" ++ groupRow.product.id] [ Html.text groupRow.product.name] ]
         , Html.td [] [Html.text <| predictionToText groupRow.prediction]
-        , Html.td [] [ Html.input [ Html.Attributes.value <| customValueToText groupRow.customValue, Html.Events.onInput (ChangeCustomValue groupRow.product) ] [] ]--Html.text <| customValueToText groupRow.customValue]
+        , Html.td [] [ Html.input [ Html.Attributes.value <| String.fromInt groupRow.customValue, Html.Events.onInput (ChangeCustomValue groupRow.product) ] [] ]--Html.text <| customValueToText groupRow.customValue]
         , Html.td [] [ Html.span [ Html.Attributes.class "pico-color-pink-450", Html.Events.onClick <| DeleteProductFromGroup groupRow.product.id ] [ Html.text "x"] ]
         ] --todo add delete product from group
 
@@ -390,11 +425,11 @@ predictionToText prediction =
         Just pred -> String.fromFloat pred.value
 
 
-customValueToText: Maybe CustomValue -> String
-customValueToText value =
-    case value of
-        Nothing -> "-"
-        Just a -> String.fromInt a.value
+--customValueToText: Maybe CustomValue -> String
+--customValueToText value =
+--    case value of
+--        Nothing -> "-"
+--        Just a -> String.fromInt a.value
 
 
 drawSearchAndAddProduct: Model -> Html.Html Msg
