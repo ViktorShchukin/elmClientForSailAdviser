@@ -10,7 +10,7 @@ import Shared
 import View exposing (View)
 import Http
 import Json.Decode exposing (Decoder, map2, map3, field, string, float, int, maybe)
-import Json.Encode
+import Json.Encode as Encode
 import Time
 import Iso8601
 import Task
@@ -73,21 +73,9 @@ init route () =
                     , Effect.sendCmd <| requestToGetGroup route.params.groupId]
     )
 
---productToGroupRow: Product -> GroupRow
---productToGroupRow product =
---    GroupRow product Nothing Nothing
-
-
 getInitTime: Cmd Msg
 getInitTime =
     Task.perform InitTime Time.now
-
-
---doSearchForProductsInGroup: String -> Cmd Msg
---doSearchForProductsInGroup route =
---    Http.get
---                  { url = "/dictionary/group/" ++ route ++ "/product"
---                  , expect = Http.expectJson GotProductsForGroup <| Json.Decode.list productDecoder}
 
 doPrediction: Time.Posix  -> Product -> Cmd Msg
 doPrediction range product =
@@ -135,13 +123,9 @@ type Msg
     | GotGroupRows (Result Http.Error (List GroupRow))
 
     | AddProductToGroup String
-    | GotResponseAddProduct (Result Http.Error ())
-
     | DeleteProductFromGroup String
-    | GotResponseDeleteProduct (Result Http.Error ())
-
     | ChangeCustomValue Product String
-    | GotResponseUpdateCustomValue (Result Http.Error ())
+    | UpdateGroupRows( Result Http.Error ())
 
     | Change String
     | GotProductsForSearch (Result Http.Error (List Product))
@@ -150,6 +134,9 @@ type Msg
     | GotPrediction (Result Http.Error Prediction)
 
     | DownloadFile
+    --| GotResponseAddProduct (Result Http.Error ())
+    --| GotResponseDeleteProduct (Result Http.Error ())
+    --| GotResponseUpdateCustomValue (Result Http.Error ())
     --| GotCustomValue (Result Http.Error CustomValue)
     --| GotProductsForGroup (Result Http.Error (List Product))
 
@@ -164,7 +151,6 @@ update route msg model =
 
         InitTime timeNow -> (setDate model <| MyTime.plusOneMoth timeNow, Effect.none)
         ----
-        -- todo end logic
         GotGroupRows res ->
             case res of
                 Ok groupRowList -> ( { model | productsInGroup = groupRowList } , Effect.none)
@@ -172,17 +158,15 @@ update route msg model =
         ----
         AddProductToGroup productId -> (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
 
-        GotResponseAddProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
-        ----
         DeleteProductFromGroup productId -> (model, Effect.sendCmd <| requestToDeleteProductFromGroup route.params.groupId productId)
 
-        GotResponseDeleteProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
-        ----
         ChangeCustomValue product str -> case String.toInt str of
-                                                    Nothing -> (model,Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product 0)
-                                                    Just a -> (model, Effect.sendCmd <| requestToUpdateCustomValue route.params.groupId product a)
-
-        GotResponseUpdateCustomValue res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+                                                    Nothing -> (model,Effect.sendCmd <| updateGroupRow route.params.groupId product 0)
+                                                    Just a -> (model, Effect.sendCmd <| updateGroupRow route.params.groupId product a)
+        UpdateGroupRows res ->
+            case res of
+                Ok () -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+                Err err -> ( model, Effect.none)
         ----
         Change newContent ->
             if String.length newContent >= 3 then
@@ -213,6 +197,9 @@ update route msg model =
         ----
         DownloadFile -> (model, Effect.sendCmd <| File.Download.url <| getFileUrl model)
 
+        --GotResponseAddProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+        --GotResponseDeleteProduct res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
+        --GotResponseUpdateCustomValue res -> (model, Effect.sendCmd <| getGroupRows route.params.groupId)
         --GotCustomValue res ->
         --    case res of
         --        Ok value -> ( setCustomValue model value, Effect.none)
@@ -261,30 +248,16 @@ setDateError model humanInput =
         { model | range = newRange}
 
 
-requestToUpdateCustomValue: String -> Product -> Int -> Cmd Msg
-requestToUpdateCustomValue groupId product updatedValue =
+updateGroupRow: String -> Product -> Int -> Cmd Msg
+updateGroupRow groupId product updatedValue =
     Http.request { method = "PUT"
                  , headers = []
-                 , url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
-                 , body = Http.jsonBody <| Json.Encode.object [("custom-value", Json.Encode.int updatedValue)]
-                 , expect = Http.expectWhatever GotResponseUpdateCustomValue
+                 , url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id
+                 , body = Http.jsonBody <| groupRowToJson groupId product.id updatedValue
+                 , expect = Http.expectWhatever UpdateGroupRows
                  , timeout = Nothing
                  , tracker = Nothing
                  }
-
-
---requestToGetCustomValue: String -> Product -> Cmd Msg
---requestToGetCustomValue groupId product =
---    Http.get { url = "/dictionary/group/" ++ groupId ++ "/product/" ++ product.id ++ "/custom-value"
---             , expect = Http.expectJson GotCustomValue customValueDecoder
---             }
-
-
---customValueDecoder: Decoder CustomValue
---customValueDecoder =
---    map2 CustomValue
---        (field "custom-value" int)
---        (field "product-id" string)
 
 
 getProductFromGroupRow: GroupRow -> Product
@@ -294,10 +267,18 @@ getProductFromGroupRow groupRow =
 
 requestToAddProductToGroup: String -> String -> Cmd Msg
 requestToAddProductToGroup groupId productId =
-    Http.post { url = "/dictionary/group/" ++ groupId ++ "/product/" ++ productId
-              , body = Http.emptyBody
-              , expect = Http.expectWhatever GotResponseAddProduct
+    Http.post { url = "/dictionary/group/" ++ groupId ++ "/product"
+              , body = Http.jsonBody <| groupRowToJson groupId productId 0
+              , expect = Http.expectWhatever UpdateGroupRows
               }
+
+groupRowToJson: String -> String -> Int -> Encode.Value
+groupRowToJson groupId productId customValue =
+    Encode.object
+        [ ("groupId", Encode.string groupId)
+        , ("productId", Encode.string productId)
+        , ("customValue", Encode.int customValue)
+        ]
 
 
 requestToDeleteProductFromGroup: String -> String -> Cmd Msg
@@ -306,7 +287,7 @@ requestToDeleteProductFromGroup groupId productId =
                  , headers = []
                  , url = "/dictionary/group/" ++ groupId ++ "/product/" ++ productId
                  , body = Http.emptyBody
-                 , expect = Http.expectWhatever GotResponseDeleteProduct
+                 , expect = Http.expectWhatever UpdateGroupRows
                  , timeout = Nothing
                  , tracker = Nothing
                  }
