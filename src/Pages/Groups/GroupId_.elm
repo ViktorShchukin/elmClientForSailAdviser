@@ -219,7 +219,8 @@ update route msg model =
 
 getFileUrl: Model -> String
 getFileUrl model =
-    "/dictionary/group/" ++ model.group.id ++ "/prediction-file/" ++ Iso8601.fromTime model.range.posix
+    "/dictionary/group/" ++ model.group.id ++ "/prediction/file/" ++ Iso8601.fromTime model.range.posix
+
 
 
 setDate: Model -> Time.Posix -> Model
