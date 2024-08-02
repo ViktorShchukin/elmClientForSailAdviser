@@ -153,7 +153,9 @@ update route msg model =
         ----
         GotGroupRows res ->
             case res of
-                Ok groupRowList -> ( { model | productsInGroup = groupRowList } , Effect.none)
+                Ok groupRowList -> ( { model | productsInGroup = groupRowList }
+                                    -- todo this just temporary. redo with logic for get  predictions.... or not??? should think about this in free time
+                                   , Effect.batch <| List.map Effect.sendCmd (List.map (doPrediction model.range.posix) (List.map getProductFromGroupRow groupRowList)))
                 Err err -> ( updateDebug ("GotGroupRows: " ++ getHttpErrorInfo err)  model, Effect.none)
         ----
         AddProductToGroup productId -> (model, Effect.sendCmd <| requestToAddProductToGroup route.params.groupId productId)
