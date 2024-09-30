@@ -18,5 +18,5 @@ saleDecoder =
         (field "id" string)
         (field "productId" string)
         (field "quantity" int)
-        (field "totalSum" float)
+        (field "cost" float)
         (field "saleDate" Iso8601.decoder)
