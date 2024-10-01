@@ -379,7 +379,9 @@ drawPageBody model =
         ]
 
 
-
+getProductName: GroupRow -> String
+getProductName groupRow =
+    groupRow.product.name
 
 
 
@@ -388,7 +390,7 @@ drawProductInGroup model =
      Html.table [] <| List.append [ Html.th [] [Html.text "name"]
                                   , Html.th [] [Html.text "prediction"]
                                   , Html.th [] [Html.text "custom value"]
-                                  ] <| List.map productToRow model.productsInGroup
+                                  ] <| List.map productToRow (List.sortBy getProductName model.productsInGroup)
 
 
 
